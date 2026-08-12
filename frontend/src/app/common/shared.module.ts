@@ -55,6 +55,9 @@ import {StudioSearchFilterComponent} from './components/studio-search-filter/stu
 import {StudioDateRangeFilterComponent} from './components/studio-date-range-filter/studio-date-range-filter.component';
 import {UploadProgressWidgetComponent} from './components/upload-progress-widget/upload-progress-widget.component';
 import {TruncatePipe} from './pipes/truncate.pipe';
+import {FolderCardComponent} from './components/folder-card/folder-card.component';
+import {CreateFolderDialogComponent} from './components/create-folder-dialog/create-folder-dialog.component';
+import {MoveToFolderDialogComponent} from './components/move-to-folder-dialog/move-to-folder-dialog.component';
 
 const DECLARATIONS = [
   CreateWorkspaceModalComponent,
@@ -75,6 +78,9 @@ const DECLARATIONS = [
   UploadProgressWidgetComponent,
   TruncatePipe,
   TagsManagementDialogComponent,
+  FolderCardComponent,
+  CreateFolderDialogComponent,
+  MoveToFolderDialogComponent,
 ];
 
 const MODULES = [

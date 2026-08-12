@@ -83,6 +83,9 @@ class AssetRoleEnum(str, Enum):
     )
     VIDEO_REFERENCE = "video_reference"  # Video used as omni input reference
     AUDIO_REFERENCE = "audio_reference"  # Audio used as omni input reference
+    YOUTUBE_VIDEO_REFERENCE = (
+        "youtube_video_reference"  # YouTube video used as input reference
+    )
 
 
 class SourceAssetLink(BaseModel):
@@ -142,6 +145,10 @@ class MediaItem(Base):
     workspace_id: Mapped[int] = mapped_column(
         ForeignKey("workspaces.id"),
         nullable=False,
+    )
+    folder_id: Mapped[int | None] = mapped_column(
+        ForeignKey("folders.id", ondelete="SET NULL"),
+        nullable=True,
     )
     user_email: Mapped[str] = mapped_column(String, nullable=False)
     user_id: Mapped[int | None] = mapped_column(
@@ -255,6 +262,10 @@ class MediaItemModel(BaseDocument):
     # created_at is an index but is autopopulated by BaseDocument
     workspace_id: int = Field(
         description="Foreign key (ID) to the 'workspaces' collection this creation belongs to.",
+    )
+    folder_id: int | None = Field(
+        default=None,
+        description="Foreign key (ID) to the 'folders' collection this creation belongs to.",
     )
     user_email: str
     user_id: int | None = None  # TODO: Change to 'required' in the future

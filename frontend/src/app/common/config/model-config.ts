@@ -37,6 +37,7 @@ export interface ModelCapability {
   supportsVoice?: boolean;
   supportsLanguage?: boolean;
   supportsSeed?: boolean;
+  supportsVideoReference?: boolean;
 }
 
 export interface GenerationModelConfig {
@@ -80,6 +81,7 @@ export const MODEL_CONFIGS: GenerationModelConfig[] = [
       supportedResolutions: ['1K', '2K', '4K'],
       supportedDurations: [],
       supportsGoogleSearch: true,
+      supportsVideoReference: true,
     },
   },
   {
@@ -110,6 +112,7 @@ export const MODEL_CONFIGS: GenerationModelConfig[] = [
       supportedResolutions: ['1K'],
       supportedDurations: [],
       supportsGoogleSearch: true,
+      supportsVideoReference: true,
     },
   },
   {
@@ -235,7 +238,7 @@ export const MODEL_CONFIGS: GenerationModelConfig[] = [
       ],
       maxReferenceImages: 3,
       supportedAspectRatios: ['16:9', '9:16'],
-      supportedResolutions: ['1K'],
+      supportedResolutions: [],
       supportedDurations: [4, 6, 8],
       supportsAudio: true,
     },

@@ -31,6 +31,7 @@ class UnifiedGalleryItemResponse(BaseModel):
 
     id: int
     workspace_id: int
+    folder_id: int | None = None
     created_at: datetime
     item_type: str  # 'media_item' or 'source_asset'
     status: str | None = None
@@ -47,6 +48,14 @@ class UnifiedGalleryItemResponse(BaseModel):
     metadata: dict[str, Any] = Field(
         default_factory=dict, validation_alias="metadata_"
     )
+
+    @field_validator("gcs_uris", "thumbnail_uris", mode="before")
+    @classmethod
+    def filter_none_uris(cls, v: Any) -> list[str]:
+        """Ensures None or non-string elements are removed from URI lists."""
+        if isinstance(v, list):
+            return [x for x in v if isinstance(x, str) and x]
+        return []
 
     @field_validator("metadata", mode="after")
     @classmethod
