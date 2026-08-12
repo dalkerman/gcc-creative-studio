@@ -1,0 +1,37 @@
+<!--
+ Copyright 2026 Google LLC
+
+ Licensed under the Apache License, Version 2.0 (the "License");
+ you may not use this file except in compliance with the License.
+ You may obtain a copy of the License at
+
+     http://www.apache.org/licenses/LICENSE-2.0
+
+ Unless required by applicable law or agreed to in writing, software
+ distributed under the License is distributed on an "AS IS" BASIS,
+ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ See the License for the specific language governing permissions and
+ limitations under the License.
+-->
+
+<div class="folder-card">
+  <div class="folder-icon">
+    <mat-icon>folder</mat-icon>
+  </div>
+  <div class="folder-name">{{ folder.title }}</div>
+  <div class="folder-options">
+    <button matIconButton [matMenuTriggerFor]="menu" aria-label="Example icon-button with a menu">
+      <mat-icon>more_vert</mat-icon>
+    </button>
+    <mat-menu #menu="matMenu" xPosition="before" yPosition="below">
+      <button mat-menu-item>
+        <mat-icon>edit</mat-icon>
+        <span>Rename</span>
+      </button>
+      <button mat-menu-item>
+        <mat-icon color="warn">delete</mat-icon>
+        <span style="color: #f44336;">Delete</span>
+      </button>
+    </mat-menu>
+  </div>
+</div>

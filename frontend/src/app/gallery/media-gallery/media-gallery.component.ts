@@ -113,6 +113,10 @@ export class MediaGalleryComponent implements OnInit, OnDestroy, AfterViewInit {
   groups: {title: string; items: GalleryItem[]}[] = [];
   readonly acceptedMediaUploadFormats = ACCEPTED_MEDIA_UPLOAD_FORMATS;
 
+  folders: {title: string;}[] = [
+    { title: 'Pixel Watch 4'}, { title: 'Life with Pixel' }, { title: 'Android XR' }, { title: 'Google AI' }
+  ];
+
   selectedItems: Set<string> = new Set();
   lastSelectedIndex: number | null = null;
 

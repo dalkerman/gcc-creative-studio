@@ -289,6 +289,17 @@
       <p class="pt-5 text-white">Loading media...</p>
     </div>
 
+    @if (folders.length > 0) {
+      <div class="flex flex-col mt-8">
+        <h2 class="text-white !text-3xl mb-4 pl-2">Folders</h2>
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-4 grid-flow-dense">
+          @for (folder of folders; track $index) {
+            <app-folder-card [folder]="folder"></app-folder-card>
+          }
+        </div>
+      </div>
+    }
+
     <div class="flex flex-col gap-8 mt-8" *ngIf="groups.length > 0">
       <div *ngFor="let group of groups; trackBy: trackByGroup">
         <h2 class="text-white text-lg mb-4 pl-2">{{ group.title }}</h2>
