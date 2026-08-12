@@ -56,6 +56,10 @@ import {ConfirmationDialogComponent} from '../../common/components/confirmation-
 import {MediaUploadService} from '../../common/services/media-upload/media-upload.service';
 import {ACCEPTED_MEDIA_UPLOAD_FORMATS} from '../../common/services/media-upload/media-upload.constants';
 import {GoogleDriveService} from '../../common/services/google-drive/google-drive.service';
+import {Folder, FolderBreadcrumb} from '../../common/models/folder.model';
+import {FolderService} from '../../common/services/folder.service';
+import {CreateFolderDialogComponent} from '../../common/components/create-folder-dialog/create-folder-dialog.component';
+import {MoveToFolderDialogComponent} from '../../common/components/move-to-folder-dialog/move-to-folder-dialog.component';
 
 @Component({
   selector: 'app-media-gallery',
@@ -113,9 +117,10 @@ export class MediaGalleryComponent implements OnInit, OnDestroy, AfterViewInit {
   groups: {title: string; items: GalleryItem[]}[] = [];
   readonly acceptedMediaUploadFormats = ACCEPTED_MEDIA_UPLOAD_FORMATS;
 
-  folders: {title: string;}[] = [
-    { title: 'Pixel Watch 4'}, { title: 'Life with Pixel' }, { title: 'Android XR' }, { title: 'Google AI' }
-  ];
+  folders: Folder[] = [];
+  currentFolderId: number | null = null;
+  breadcrumbs: FolderBreadcrumb[] = [];
+  isLoadingFolders = false;
 
   selectedItems: Set<string> = new Set();
   lastSelectedIndex: number | null = null;
@@ -237,6 +242,7 @@ export class MediaGalleryComponent implements OnInit, OnDestroy, AfterViewInit {
     private tagsService: TagsService,
     public uploadService: MediaUploadService,
     private googleDriveService: GoogleDriveService,
+    private folderService: FolderService,
     @Inject(PLATFORM_ID) platformId: Object,
   ) {
     this.isBrowser = isPlatformBrowser(platformId);
@@ -302,6 +308,7 @@ export class MediaGalleryComponent implements OnInit, OnDestroy, AfterViewInit {
       });
 
     if (this.isBrowser) {
+      this.loadFolders();
       this.searchTerm();
       this.showFeaturesHint();
 
@@ -309,6 +316,10 @@ export class MediaGalleryComponent implements OnInit, OnDestroy, AfterViewInit {
         if (workspaceId) {
           this.tagsCurrentPage = 1;
           this.loadTags();
+          this.currentFolderId = null;
+          this.breadcrumbs = [];
+          this.loadFolders();
+          this.searchTerm();
         }
       });
     }
@@ -907,6 +918,16 @@ export class MediaGalleryComponent implements OnInit, OnDestroy, AfterViewInit {
     if (this.tagsFilter.length > 0) {
       filters['tags'] = this.tagsFilter;
     }
+
+    // Folder filtering: when browsing without freeform query, filter by folder or root
+    if (!this.queryFilter.trim()) {
+      if (this.currentFolderId !== null) {
+        filters['folderId'] = this.currentFolderId;
+      } else {
+        filters['isRoot'] = true;
+      }
+    }
+
     if (!this.isSelectionMode && !this.isSelectorMode) {
       const state: GalleryFiltersState = {
         query: this.queryFilter,
@@ -926,5 +947,249 @@ export class MediaGalleryComponent implements OnInit, OnDestroy, AfterViewInit {
   public onTagChange(tags: string[]): void {
     this.tagsFilter = tags;
     this.searchTerm();
+  }
+
+  loadFolders(): void {
+    const workspaceId = this.workspaceStateService.getActiveWorkspaceId();
+    if (!workspaceId) {
+      this.folders = [];
+      return;
+    }
+    this.isLoadingFolders = true;
+    this.folderService.getFolders(workspaceId, this.currentFolderId).subscribe({
+      next: folders => {
+        this.folders = folders;
+        this.isLoadingFolders = false;
+      },
+      error: err => {
+        console.error('Error loading folders:', err);
+        this.isLoadingFolders = false;
+      },
+    });
+  }
+
+  loadBreadcrumbs(): void {
+    if (this.currentFolderId === null) {
+      this.breadcrumbs = [];
+      return;
+    }
+    this.folderService.getBreadcrumbs(this.currentFolderId).subscribe({
+      next: crumbs => {
+        this.breadcrumbs = crumbs;
+      },
+      error: err => {
+        console.error('Error loading breadcrumbs:', err);
+      },
+    });
+  }
+
+  navigateToFolder(folder: Folder): void {
+    this.currentFolderId = folder.id;
+    this.loadFolders();
+    this.loadBreadcrumbs();
+    this.searchTerm();
+  }
+
+  navigateToBreadcrumb(breadcrumb: FolderBreadcrumb | null): void {
+    this.currentFolderId = breadcrumb ? breadcrumb.id : null;
+    this.loadFolders();
+    this.loadBreadcrumbs();
+    this.searchTerm();
+  }
+
+  openCreateFolderDialog(): void {
+    const workspaceId = this.workspaceStateService.getActiveWorkspaceId();
+    if (!workspaceId) return;
+
+    const dialogRef = this.dialog.open(CreateFolderDialogComponent, {
+      data: {
+        workspaceId,
+        parentId: this.currentFolderId,
+      },
+    });
+
+    dialogRef.afterClosed().subscribe(result => {
+      if (result) {
+        this.folderService
+          .createFolder({
+            workspaceId,
+            parentId: this.currentFolderId,
+            name: result.name,
+            color: result.color,
+          })
+          .subscribe({
+            next: created => {
+              this.snackBar.open(`Folder "${created.name}" created`, 'Close', {
+                duration: 3000,
+              });
+              this.loadFolders();
+            },
+            error: err => {
+              console.error('Error creating folder:', err);
+              this.snackBar.open('Failed to create folder', 'Close', {
+                duration: 3000,
+              });
+            },
+          });
+      }
+    });
+  }
+
+  openEditFolderDialog(folder: Folder): void {
+    const workspaceId = this.workspaceStateService.getActiveWorkspaceId();
+    if (!workspaceId) return;
+
+    const dialogRef = this.dialog.open(CreateFolderDialogComponent, {
+      data: {
+        workspaceId,
+        parentId: folder.parentId,
+        folder,
+      },
+    });
+
+    dialogRef.afterClosed().subscribe(result => {
+      if (result) {
+        this.folderService
+          .updateFolder(folder.id, {
+            name: result.name,
+            color: result.color,
+          })
+          .subscribe({
+            next: updated => {
+              this.snackBar.open(
+                `Folder renamed to "${updated.name}"`,
+                'Close',
+                {duration: 3000},
+              );
+              this.loadFolders();
+              this.loadBreadcrumbs();
+            },
+            error: err => {
+              console.error('Error updating folder:', err);
+              this.snackBar.open('Failed to rename folder', 'Close', {
+                duration: 3000,
+              });
+            },
+          });
+      }
+    });
+  }
+
+  openDeleteFolderDialog(folder: Folder): void {
+    const dialogRef = this.dialog.open(ConfirmationDialogComponent, {
+      data: {
+        title: 'Delete Folder',
+        message: `Are you sure you want to delete folder "${folder.name}" and all its subfolders?`,
+      },
+    });
+
+    dialogRef.afterClosed().subscribe(confirmed => {
+      if (confirmed) {
+        this.folderService.deleteFolder(folder.id).subscribe({
+          next: () => {
+            this.snackBar.open(`Folder "${folder.name}" deleted`, 'Close', {
+              duration: 3000,
+            });
+            this.loadFolders();
+            this.searchTerm();
+          },
+          error: err => {
+            console.error('Error deleting folder:', err);
+            this.snackBar.open('Failed to delete folder', 'Close', {
+              duration: 3000,
+            });
+          },
+        });
+      }
+    });
+  }
+
+  openMoveFolderDialog(folder: Folder): void {
+    const workspaceId = this.workspaceStateService.getActiveWorkspaceId();
+    if (!workspaceId) return;
+
+    const dialogRef = this.dialog.open(MoveToFolderDialogComponent, {
+      data: {
+        workspaceId,
+        itemCount: 1,
+        movingFolderIds: [folder.id],
+        currentFolderId: folder.parentId ?? null,
+      },
+    });
+
+    dialogRef.afterClosed().subscribe(result => {
+      if (result && result.destinationFolderId !== undefined) {
+        this.folderService
+          .updateFolder(folder.id, {
+            parentId: result.destinationFolderId,
+          })
+          .subscribe({
+            next: () => {
+              this.snackBar.open('Folder moved successfully', 'Close', {
+                duration: 3000,
+              });
+              this.loadFolders();
+            },
+            error: err => {
+              console.error('Error moving folder:', err);
+              this.snackBar.open('Failed to move folder', 'Close', {
+                duration: 3000,
+              });
+            },
+          });
+      }
+    });
+  }
+
+  openBatchMoveDialog(): void {
+    const workspaceId = this.workspaceStateService.getActiveWorkspaceId();
+    if (!workspaceId || this.selectedItems.size === 0) return;
+
+    const selected = Array.from(this.selectedItems);
+    const mediaItemIds = selected
+      .filter(id => id.startsWith('media_item:'))
+      .map(id => parseInt(id.split(':')[1]));
+    const sourceAssetIds = selected
+      .filter(id => id.startsWith('source_asset:'))
+      .map(id => parseInt(id.split(':')[1]));
+
+    const dialogRef = this.dialog.open(MoveToFolderDialogComponent, {
+      data: {
+        workspaceId,
+        itemCount: this.selectedItems.size,
+        currentFolderId: this.currentFolderId,
+      },
+    });
+
+    dialogRef.afterClosed().subscribe(result => {
+      if (result && result.destinationFolderId !== undefined) {
+        this.folderService
+          .moveItems({
+            workspaceId,
+            mediaItemIds,
+            sourceAssetIds,
+            destinationFolderId: result.destinationFolderId,
+          })
+          .subscribe({
+            next: res => {
+              this.snackBar.open(
+                `${res.total_moved} items moved successfully`,
+                'Close',
+                {duration: 3000},
+              );
+              this.selectedItems.clear();
+              this.lastSelectedIndex = null;
+              this.loadFolders();
+              this.searchTerm();
+            },
+            error: err => {
+              console.error('Error moving items:', err);
+              this.snackBar.open('Failed to move items', 'Close', {
+                duration: 3000,
+              });
+            },
+          });
+      }
+    });
   }
 }
