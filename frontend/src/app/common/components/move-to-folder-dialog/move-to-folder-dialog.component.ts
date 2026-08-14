@@ -72,6 +72,9 @@ export class MoveToFolderDialogComponent implements OnInit {
 
         // Flatten the tree into indented rows
         const disabledIds = new Set<number>(this.data.movingFolderIds || []);
+        // If there are any moving folders, we need to disable their ancestors as well.
+        // Because we can't move folders into their own children.
+        const isMovingFolders = (this.data.movingFolderIds?.length ?? 0) > 0;
 
         const traverse = (
           nodes: FolderTreeNode[],
@@ -94,7 +97,7 @@ export class MoveToFolderDialogComponent implements OnInit {
             });
 
             if (node.children && node.children.length > 0) {
-              traverse(node.children, depth + 1, isDisabled);
+              traverse(node.children, depth + 1, isMovingFolders && isDisabled);
             }
           }
         };
