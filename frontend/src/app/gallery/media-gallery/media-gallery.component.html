@@ -301,10 +301,15 @@
     <!-- Breadcrumb Navigation Bar -->
     <div class="flex items-center gap-2 px-4 py-2 text-sm text-neutral-400 overflow-x-auto custom-scrollbar" *ngIf="!isSelectorMode">
       <button
-        class="flex items-center gap-1.5 px-2.5 py-1 rounded-md transition-colors hover:text-white hover:bg-neutral-800/60 cursor-pointer"
+        class="flex items-center gap-1.5 px-2.5 py-1 rounded-md transition-all hover:text-white hover:bg-neutral-800/60 cursor-pointer"
         [class.text-white]="currentFolderId === null"
         [class.font-semibold]="currentFolderId === null"
+        [class.breadcrumb-drag-over]="dragOverBreadcrumbId === 'root'"
         (click)="navigateToBreadcrumb(null)"
+        (dragover)="onBreadcrumbDragOver($event, null)"
+        (dragenter)="onBreadcrumbDragOver($event, null)"
+        (dragleave)="onBreadcrumbDragLeave($event, null)"
+        (drop)="onBreadcrumbDrop($event, null)"
       >
         <mat-icon class="!w-4 !h-4 text-[16px]">home</mat-icon>
         <span>All Media</span>
@@ -313,10 +318,15 @@
       <ng-container *ngFor="let crumb of breadcrumbs; let last = last">
         <mat-icon class="!w-4 !h-4 text-[16px] text-neutral-600">chevron_right</mat-icon>
         <button
-          class="flex items-center gap-1.5 px-2.5 py-1 rounded-md transition-colors hover:text-white hover:bg-neutral-800/60 cursor-pointer"
+          class="flex items-center gap-1.5 px-2.5 py-1 rounded-md transition-all hover:text-white hover:bg-neutral-800/60 cursor-pointer"
           [class.text-white]="last"
           [class.font-semibold]="last"
+          [class.breadcrumb-drag-over]="dragOverBreadcrumbId === crumb.id"
           (click)="navigateToBreadcrumb(crumb)"
+          (dragover)="onBreadcrumbDragOver($event, crumb.id)"
+          (dragenter)="onBreadcrumbDragOver($event, crumb.id)"
+          (dragleave)="onBreadcrumbDragLeave($event, crumb.id)"
+          (drop)="onBreadcrumbDrop($event, crumb.id)"
         >
           <span>{{ crumb.name }}</span>
         </button>
@@ -345,10 +355,12 @@
             <app-folder-card
               [folder]="folder"
               [isSelectionMode]="isSelectionMode"
+              [isSelectorMode]="isSelectorMode"
               (folderClicked)="navigateToFolder($event)"
               (editRequested)="openEditFolderDialog($event)"
               (deleteRequested)="openDeleteFolderDialog($event)"
               (moveRequested)="openMoveFolderDialog($event)"
+              (itemDropped)="onItemDroppedOnFolder($event.folder, $event.payload)"
             ></app-folder-card>
           }
         </div>
@@ -366,8 +378,10 @@
             <app-gallery-card
               [item]="media"
               [isSelectionMode]="isSelectionMode"
+              [isSelectorMode]="isSelectorMode"
               [isSelected]="isItemSelected(media)"
               [anyItemSelected]="selectedItems.size > 0"
+              [selectedItems]="selectedItems"
               [filteredTags]="tagsFilter"
               (mediaItemSelected)="mediaItemSelected.emit($event)"
               (mediaSelected)="mediaSelected.emit({mediaItem: $any($event), selectedIndex: 0})"

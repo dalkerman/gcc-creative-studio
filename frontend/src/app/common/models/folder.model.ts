@@ -62,3 +62,10 @@ export interface MoveItemsDto {
   folderIds?: number[];
   destinationFolderId?: number | null;
 }
+
+export interface GalleryDragPayload {
+  mediaItemIds: number[];
+  sourceAssetIds: number[];
+  folderIds?: number[];
+  itemCount: number;
+}

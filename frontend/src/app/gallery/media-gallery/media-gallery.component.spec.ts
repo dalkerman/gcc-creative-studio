@@ -29,13 +29,28 @@ import {WorkspaceStateService} from '../../services/workspace/workspace-state.se
 import {TagsService} from '../../common/services/tags.service';
 import {MediaUploadService} from '../../common/services/media-upload/media-upload.service';
 import {GoogleDriveService} from '../../common/services/google-drive/google-drive.service';
+import {FolderService} from '../../common/services/folder.service';
+import {MatSnackBar} from '@angular/material/snack-bar';
 
 describe('MediaGalleryComponent', () => {
   let component: MediaGalleryComponent;
   let fixture: ComponentFixture<MediaGalleryComponent>;
   let uploadService: MediaUploadService;
+  let folderService: jasmine.SpyObj<FolderService>;
 
   beforeEach(async () => {
+    const folderServiceSpy = jasmine.createSpyObj('FolderService', [
+      'getFolders',
+      'getBreadcrumbs',
+      'moveItems',
+      'createFolder',
+      'updateFolder',
+      'deleteFolder',
+    ]);
+    folderServiceSpy.getFolders.and.returnValue(of([]));
+    folderServiceSpy.getBreadcrumbs.and.returnValue(of([]));
+    folderServiceSpy.moveItems.and.returnValue(of({total_moved: 1}));
+
     await TestBed.configureTestingModule({
       declarations: [MediaGalleryComponent],
       imports: [
@@ -47,6 +62,16 @@ describe('MediaGalleryComponent', () => {
       schemas: [NO_ERRORS_SCHEMA],
       providers: [
         MediaUploadService,
+        {
+          provide: FolderService,
+          useValue: folderServiceSpy,
+        },
+        {
+          provide: MatSnackBar,
+          useValue: {
+            open: jasmine.createSpy('open'),
+          },
+        },
         {
           provide: GoogleDriveService,
           useValue: {
@@ -110,6 +135,9 @@ describe('MediaGalleryComponent', () => {
     fixture = TestBed.createComponent(MediaGalleryComponent);
     component = fixture.componentInstance;
     uploadService = TestBed.inject(MediaUploadService);
+    folderService = TestBed.inject(
+      FolderService,
+    ) as jasmine.SpyObj<FolderService>;
     fixture.detectChanges();
   });
 
@@ -191,6 +219,105 @@ describe('MediaGalleryComponent', () => {
       expect(component.onlyMyMedia).toBeFalse();
       expect(component.startDateFilter).toBeNull();
       expect(component.endDateFilter).toBeNull();
+    });
+  });
+
+  describe('Drag and Drop moving', () => {
+    it('should move items to a target folder on onItemDroppedOnFolder', () => {
+      const targetFolder = {
+        id: 5,
+        workspaceId: 1,
+        userEmail: 'test@google.com',
+        name: 'Target Folder',
+        itemCount: 0,
+        subfolderCount: 0,
+      };
+
+      const payload = {
+        mediaItemIds: [101, 102],
+        sourceAssetIds: [201],
+        itemCount: 3,
+      };
+
+      component.images = [
+        {
+          id: 101,
+          itemType: 'media_item',
+          workspaceId: 1,
+          createdAt: '',
+          metadata: {},
+        },
+        {
+          id: 102,
+          itemType: 'media_item',
+          workspaceId: 1,
+          createdAt: '',
+          metadata: {},
+        },
+        {
+          id: 999,
+          itemType: 'media_item',
+          workspaceId: 1,
+          createdAt: '',
+          metadata: {},
+        },
+      ];
+
+      component.onItemDroppedOnFolder(targetFolder, payload);
+
+      expect(folderService.moveItems).toHaveBeenCalledWith({
+        workspaceId: 1,
+        mediaItemIds: [101, 102],
+        sourceAssetIds: [201],
+        folderIds: [],
+        destinationFolderId: 5,
+      });
+      expect(component.images.length).toBe(1);
+      expect(component.images[0].id).toBe(999);
+    });
+
+    it('should move items to root on onBreadcrumbDrop with null folderId', () => {
+      component.currentFolderId = 5;
+      const payload = {
+        mediaItemIds: [101],
+        sourceAssetIds: [],
+        itemCount: 1,
+      };
+
+      const mockEvent = {
+        preventDefault: jasmine.createSpy('preventDefault'),
+        dataTransfer: {
+          getData: (type: string) =>
+            type === 'application/json' ? JSON.stringify(payload) : '',
+        },
+      } as unknown as DragEvent;
+
+      component.onBreadcrumbDrop(mockEvent, null);
+
+      expect(folderService.moveItems).toHaveBeenCalledWith({
+        workspaceId: 1,
+        mediaItemIds: [101],
+        sourceAssetIds: [],
+        folderIds: [],
+        destinationFolderId: null,
+      });
+    });
+
+    it('should update dragOverBreadcrumbId on onBreadcrumbDragOver', () => {
+      const mockEvent = {
+        preventDefault: jasmine.createSpy('preventDefault'),
+        dataTransfer: {
+          types: ['application/json'],
+          dropEffect: '',
+        },
+      } as unknown as DragEvent;
+
+      component.currentFolderId = 5;
+      component.onBreadcrumbDragOver(mockEvent, null);
+      expect(component.dragOverBreadcrumbId).toBe('root');
+
+      component.onBreadcrumbDragOver(mockEvent, 2);
+      expect(component.dragOverBreadcrumbId).toBe(2);
     });
   });
 });

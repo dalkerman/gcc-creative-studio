@@ -62,7 +62,7 @@ describe('FolderService', () => {
     });
 
     const req = httpMock.expectOne(
-      `${environment.backendURL}/folders?workspace_id=1&parent_id=5`
+      `${environment.backendURL}/folders?workspace_id=1&parent_id=5`,
     );
     expect(req.request.method).toBe('GET');
     req.flush(mockFolders);
@@ -101,7 +101,7 @@ describe('FolderService', () => {
     });
 
     const req = httpMock.expectOne(
-      `${environment.backendURL}/folders/move-items`
+      `${environment.backendURL}/folders/move-items`,
     );
     expect(req.request.method).toBe('POST');
     req.flush({total_moved: 2});

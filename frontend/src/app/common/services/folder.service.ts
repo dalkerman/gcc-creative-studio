@@ -37,7 +37,7 @@ export class FolderService {
 
   getFolders(
     workspaceId: number,
-    parentId?: number | null
+    parentId?: number | null,
   ): Observable<Folder[]> {
     let params = new HttpParams().set('workspace_id', workspaceId.toString());
     if (parentId !== undefined && parentId !== null) {
@@ -47,16 +47,13 @@ export class FolderService {
   }
 
   getFolderTree(workspaceId: number): Observable<FolderTreeNode[]> {
-    const params = new HttpParams().set(
-      'workspace_id',
-      workspaceId.toString()
-    );
+    const params = new HttpParams().set('workspace_id', workspaceId.toString());
     return this.http.get<FolderTreeNode[]>(`${this.apiUrl}/tree`, {params});
   }
 
   getBreadcrumbs(folderId: number): Observable<FolderBreadcrumb[]> {
     return this.http.get<FolderBreadcrumb[]>(
-      `${this.apiUrl}/${folderId}/breadcrumbs`
+      `${this.apiUrl}/${folderId}/breadcrumbs`,
     );
   }
 
@@ -79,7 +76,7 @@ export class FolderService {
   moveItems(dto: MoveItemsDto): Observable<{total_moved: number}> {
     return this.http.post<{total_moved: number}>(
       `${this.apiUrl}/move-items`,
-      dto
+      dto,
     );
   }
 }

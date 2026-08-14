@@ -47,7 +47,7 @@ export class CreateFolderDialogComponent implements OnInit {
 
   constructor(
     public dialogRef: MatDialogRef<CreateFolderDialogComponent>,
-    @Inject(MAT_DIALOG_DATA) public data: CreateFolderDialogData
+    @Inject(MAT_DIALOG_DATA) public data: CreateFolderDialogData,
   ) {}
 
   ngOnInit(): void {

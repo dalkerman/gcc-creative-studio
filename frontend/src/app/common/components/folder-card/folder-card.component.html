@@ -17,6 +17,15 @@
 <div
   class="folder-card"
   [class.selected]="isSelected"
+  [class.drag-over]="isDragOver"
+  [class.is-dragging]="isDragging"
+  [attr.draggable]="!isSelectorMode"
+  (dragstart)="onDragStart($event)"
+  (dragend)="onDragEnd($event)"
+  (dragover)="onDragOver($event)"
+  (dragenter)="onDragOver($event)"
+  (dragleave)="onDragLeave($event)"
+  (drop)="onDrop($event)"
   (click)="onCardClick($event)"
 >
   <div class="folder-content">
@@ -24,7 +33,7 @@
       class="folder-icon-wrapper"
       [style.color]="folderColor"
     >
-      <mat-icon>folder</mat-icon>
+      <mat-icon>{{ isDragOver ? 'folder_open' : 'folder' }}</mat-icon>
     </div>
 
     <div class="folder-text">

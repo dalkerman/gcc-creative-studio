@@ -48,7 +48,7 @@ export class MoveToFolderDialogComponent implements OnInit {
   constructor(
     public dialogRef: MatDialogRef<MoveToFolderDialogComponent>,
     @Inject(MAT_DIALOG_DATA) public data: MoveToFolderDialogData,
-    private folderService: FolderService
+    private folderService: FolderService,
   ) {}
 
   ngOnInit(): void {
@@ -73,10 +73,17 @@ export class MoveToFolderDialogComponent implements OnInit {
         // Flatten the tree into indented rows
         const disabledIds = new Set<number>(this.data.movingFolderIds || []);
 
-        const traverse = (nodes: FolderTreeNode[], depth: number, parentDisabled: boolean) => {
+        const traverse = (
+          nodes: FolderTreeNode[],
+          depth: number,
+          parentDisabled: boolean,
+        ) => {
           for (const node of nodes) {
             const isSelfMoving = disabledIds.has(node.id);
-            const isDisabled = parentDisabled || isSelfMoving || (this.data.currentFolderId === node.id);
+            const isDisabled =
+              parentDisabled ||
+              isSelfMoving ||
+              this.data.currentFolderId === node.id;
 
             options.push({
               id: node.id,
@@ -108,9 +115,7 @@ export class MoveToFolderDialogComponent implements OnInit {
       return this.folderOptions;
     }
     const q = this.searchQuery.toLowerCase();
-    return this.folderOptions.filter(opt =>
-      opt.name.toLowerCase().includes(q)
-    );
+    return this.folderOptions.filter(opt => opt.name.toLowerCase().includes(q));
   }
 
   selectOption(opt: FlattenedFolderOption): void {
