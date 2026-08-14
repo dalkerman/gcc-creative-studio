@@ -1171,8 +1171,7 @@ export class MediaGalleryComponent implements OnInit, OnDestroy, AfterViewInit {
         const destName =
           result.destinationFolderId === null
             ? 'All Media'
-            : this.folders.find(f => f.id === result.destinationFolderId)
-                ?.name || 'Folder';
+            : result.folderName || 'Folder';
         this.executeMove(
           mediaItemIds,
           sourceAssetIds,

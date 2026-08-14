@@ -129,8 +129,12 @@ export class MoveToFolderDialogComponent implements OnInit {
   }
 
   confirm(): void {
+    const selectedOption = this.folderOptions.find(
+      f => f.id === this.selectedDestinationId,
+    );
     this.dialogRef.close({
       destinationFolderId: this.selectedDestinationId,
+      folderName: selectedOption?.name,
     });
   }
 

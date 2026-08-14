@@ -249,6 +249,7 @@ export class GalleryService implements OnDestroy {
       id: item.id,
       tags: item.tags,
       workspaceId: item.workspaceId,
+      folderId: item.folderId,
       userId: item.userId,
       createdAt: item.createdAt,
       itemType: item.itemType || 'media_item',
