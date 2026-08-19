@@ -63,7 +63,10 @@ import {
 } from '../../common/models/folder.model';
 import {FolderService} from '../../common/services/folder.service';
 import {CreateFolderDialogComponent} from '../../common/components/create-folder-dialog/create-folder-dialog.component';
-import {MoveToFolderDialogComponent} from '../../common/components/move-to-folder-dialog/move-to-folder-dialog.component';
+import {
+  MoveToFolderDialogComponent,
+  MoveToFolderDialogResult,
+} from '../../common/components/move-to-folder-dialog/move-to-folder-dialog.component';
 
 @Component({
   selector: 'app-media-gallery',
@@ -1122,28 +1125,43 @@ export class MediaGalleryComponent implements OnInit, OnDestroy, AfterViewInit {
       },
     });
 
-    dialogRef.afterClosed().subscribe(result => {
-      if (result && result.destinationFolderId !== undefined) {
-        this.folderService
-          .updateFolder(folder.id, {
-            parentId: result.destinationFolderId,
-          })
-          .subscribe({
-            next: () => {
-              this.snackBar.open('Folder moved successfully', 'Close', {
-                duration: 3000,
-              });
-              this.loadFolders();
+    dialogRef
+      .afterClosed()
+      .subscribe((result: MoveToFolderDialogResult | null) => {
+        if (!result) {
+          return;
+        }
+
+        if (result.destinationFolderId !== undefined) {
+          this.folderService
+            .updateFolder(folder.id, {
+              parentId: result.destinationFolderId,
+            })
+            .subscribe({
+              next: () => {
+                this.snackBar.open('Folder moved successfully', 'Close', {
+                  duration: 3000,
+                });
+                this.loadFolders();
+              },
+              error: err => {
+                console.error('Error moving folder:', err);
+                this.snackBar.open('Failed to move folder', 'Close', {
+                  duration: 3000,
+                });
+              },
+            });
+        } else if (result.destinationWorkspaceId !== undefined) {
+          // TODO: Handle moving to another workspace.
+          this.snackBar.open(
+            'Moving to another workspace not yet supported',
+            'Close',
+            {
+              duration: 3000,
             },
-            error: err => {
-              console.error('Error moving folder:', err);
-              this.snackBar.open('Failed to move folder', 'Close', {
-                duration: 3000,
-              });
-            },
-          });
-      }
-    });
+          );
+        }
+      });
   }
 
   openBatchMoveDialog(): void {
@@ -1166,21 +1184,35 @@ export class MediaGalleryComponent implements OnInit, OnDestroy, AfterViewInit {
       },
     });
 
-    dialogRef.afterClosed().subscribe(result => {
-      if (result && result.destinationFolderId !== undefined) {
-        const destName =
-          result.destinationFolderId === null
-            ? 'All Media'
-            : result.folderName || 'Folder';
-        this.executeMove(
-          mediaItemIds,
-          sourceAssetIds,
-          [],
-          result.destinationFolderId,
-          destName,
-        );
-      }
-    });
+    dialogRef
+      .afterClosed()
+      .subscribe((result: MoveToFolderDialogResult | null) => {
+        if (!result) {
+          return;
+        }
+        if (result.destinationFolderId !== undefined) {
+          const destName =
+            result.destinationFolderId === null
+              ? 'All Media'
+              : result.destinationName || 'Folder';
+          this.executeMove(
+            mediaItemIds,
+            sourceAssetIds,
+            [],
+            result.destinationFolderId,
+            destName,
+          );
+        } else if (result.destinationWorkspaceId !== undefined) {
+          // TODO: Handle moving to another workspace.
+          this.snackBar.open(
+            'Moving to another workspace not yet supported',
+            'Close',
+            {
+              duration: 3000,
+            },
+          );
+        }
+      });
   }
 
   onBreadcrumbDragOver(event: DragEvent, folderId: number | null): void {

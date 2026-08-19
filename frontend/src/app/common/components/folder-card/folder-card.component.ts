@@ -34,7 +34,6 @@ import {Folder, GalleryDragPayload} from '../../models/folder.model';
 })
 export class FolderCardComponent {
   @Input() folder!: Folder;
-  @Input() isSelectionMode = false;
   @Input() isSelectorMode = false;
   @Input() isSelected = false;
 
@@ -173,12 +172,7 @@ export class FolderCardComponent {
       event.stopPropagation();
       return;
     }
-
-    if (this.isSelectionMode) {
-      this.selectionToggled.emit({folder: this.folder, event});
-    } else {
-      this.folderClicked.emit(this.folder);
-    }
+    this.folderClicked.emit(this.folder);
   }
 
   onMenuClick(event: MouseEvent): void {

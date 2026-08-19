@@ -35,44 +35,94 @@
       <input
         type="text"
         class="search-input"
-        placeholder="Filter folders..."
+        [placeholder]="placeholderText"
         [(ngModel)]="searchQuery"
       />
     </div>
 
-    <div *ngIf="isLoading" class="flex justify-center items-center py-8">
-      <mat-progress-spinner mode="indeterminate" diameter="32"></mat-progress-spinner>
-    </div>
-
-    <div *ngIf="!isLoading" class="folder-list custom-scrollbar">
-      <div
-        *ngFor="let opt of filteredOptions"
-        class="folder-option-row"
-        [class.selected]="selectedDestinationId === opt.id"
-        [class.disabled]="opt.disabled"
-        [style.padding-left.px]="16 + opt.depth * 20"
-        (click)="selectOption(opt)"
-      >
-        <div class="flex items-center gap-3 flex-1 min-w-0">
-          <mat-icon
-            class="folder-opt-icon"
-            [style.color]="opt.color || '#8AB4F8'"
-          >
-            {{ opt.id === null ? 'home' : (opt.depth > 1 ? 'subdirectory_arrow_right' : 'folder') }}
-          </mat-icon>
-          <span class="folder-opt-name truncate">{{ opt.name }}</span>
-          <span *ngIf="opt.disabled" class="disabled-hint">(Current / Invalid)</span>
-        </div>
-
-        <mat-icon *ngIf="selectedDestinationId === opt.id" class="check-icon">
-          check_circle
-        </mat-icon>
+    @if (isLoading) {
+      <div class="flex justify-center items-center py-8">
+        <mat-progress-spinner mode="indeterminate" diameter="32"></mat-progress-spinner>
       </div>
-
-      <div *ngIf="filteredOptions.length === 0" class="no-results">
-        No folders match "{{ searchQuery }}"
-      </div>
-    </div>
+    }
+    @else {
+      <mat-tab-group [selectedIndex]="selectedTabIndex" (selectedTabChange)="onSelectedTabChange($event)">
+        <mat-tab label="Folder">
+          <div class="folder-list custom-scrollbar">
+            @for (opt of filteredOptions; track opt.id) {
+              <div
+                class="folder-option-row"
+                [class.selected]="selectedDestinationId === opt.id"
+                [class.disabled]="opt.disabled"
+                [style.padding-left.px]="16 + opt.depth * 20"
+                (click)="selectOption(opt)"
+              >
+                <div class="flex items-center gap-3 flex-1 min-w-0">
+                  <mat-icon
+                    class="folder-opt-icon"
+                    [style.color]="opt.color || '#8AB4F8'"
+                  >
+                    {{ opt.id === null ? 'home' : (opt.depth > 1 ? 'subdirectory_arrow_right' : 'folder') }}
+                  </mat-icon>
+                  <span class="folder-opt-name truncate">{{ opt.name }}</span>
+                  @if (opt.disabled) {
+                    <span class="disabled-hint">(Current / Invalid)</span>
+                  }
+                </div>
+                
+                @if (selectedDestinationId === opt.id) {
+                  <mat-icon class="check-icon">
+                    check_circle
+                  </mat-icon>
+                }
+              </div>
+            }
+            
+            @if (filteredOptions.length === 0) {
+              <div class="no-results">
+                No folders match "{{ searchQuery }}"
+              </div>
+            }
+          </div>
+        </mat-tab>
+        <mat-tab label="Workspace">
+          <div class="folder-list custom-scrollbar">
+            @for (opt of filteredWorkspaces; track opt.id) {
+              <div
+                class="folder-option-row"
+                [class.selected]="selectedDestinationId === opt.id"
+                [class.disabled]="opt.disabled"
+                (click)="selectWorkspace(opt)"
+              >
+                <div class="flex items-center gap-3 flex-1 min-w-0">
+                  <mat-icon
+                    class="folder-opt-icon"
+                  >
+                    {{ opt.scope === 'public' ? 'public' : 'lock' }}
+                  </mat-icon>
+                  <span class="folder-opt-name truncate">{{ opt.name }}</span>
+                  @if (opt.disabled) {
+                    <span class="disabled-hint">(Current Workspace)</span>
+                  }
+                </div>
+                
+                @if (selectedDestinationId === opt.id) {
+                  <mat-icon class="check-icon">
+                    check_circle
+                  </mat-icon>
+                }
+              </div>
+            }
+            
+            @if (filteredWorkspaces.length === 0) {
+              <div class="no-results">
+                No workspaces match "{{ searchQuery }}"
+              </div>
+            }
+          </div>
+        </mat-tab>
+      </mat-tab-group>
+    }
   </div>
 
   <div class="dialog-footer">
@@ -82,7 +132,7 @@
     <studio-button
       variant="primary"
       size="medium"
-      [disabled]="isLoading || (selectedDestinationId === null && data.currentFolderId === null)"
+      [disabled]="isLoading || (selectedDestinationId === null && data.currentFolderId === null) || selectedDestinationId === undefined"
       (click)="confirm()"
     >
       Move Here

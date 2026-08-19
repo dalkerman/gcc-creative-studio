@@ -299,7 +299,7 @@
     </ng-container>
 
     <!-- Breadcrumb Navigation Bar -->
-    <div class="flex items-center gap-2 px-4 py-2 text-sm text-neutral-400 overflow-x-auto custom-scrollbar" *ngIf="!isSelectorMode">
+    <div class="flex items-center gap-2 px-4 py-2 text-sm text-neutral-400 overflow-x-auto custom-scrollbar">
       <button
         class="flex items-center gap-1.5 px-2.5 py-1 rounded-md transition-all hover:text-white hover:bg-neutral-800/60 cursor-pointer"
         [class.text-white]="currentFolderId === null"
@@ -345,7 +345,7 @@
       <p class="pt-5 text-white">Loading media...</p>
     </div>
 
-    @if (folders.length > 0) {
+    @if (!isLoading && folders.length > 0) {
       <div class="flex flex-col mt-4 mb-2">
         <div class="flex items-center justify-between mb-3 px-2">
           <h2 class="text-white !text-xl font-semibold">Folders ({{ folders.length }})</h2>
@@ -354,7 +354,6 @@
           @for (folder of folders; track folder.id) {
             <app-folder-card
               [folder]="folder"
-              [isSelectionMode]="isSelectionMode"
               [isSelectorMode]="isSelectorMode"
               (folderClicked)="navigateToFolder($event)"
               (editRequested)="openEditFolderDialog($event)"
