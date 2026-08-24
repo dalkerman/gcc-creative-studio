@@ -168,3 +168,44 @@ class TestFolderRepository:
         )
         assert count == 1
         mock_db.commit.assert_called_once()
+
+    @pytest.mark.anyio
+    async def test_move_folder_to_workspace(self, folder_repo, mock_db):
+        # Mock get_descendant_ids to return root (1) and child (2)
+        mock_row1 = MagicMock(id=1)
+        mock_row2 = MagicMock(id=2)
+        mock_desc_res = MagicMock()
+        mock_desc_res.fetchall.return_value = [mock_row1, mock_row2]
+
+        mock_media_res = MagicMock(rowcount=3)
+        mock_asset_res = MagicMock(rowcount=2)
+        mock_other_res = MagicMock(rowcount=1)
+
+        mock_db.execute.side_effect = [
+            mock_desc_res,
+            mock_media_res,
+            mock_asset_res,
+            mock_other_res,
+            mock_other_res,
+        ]
+
+        result = await folder_repo.move_folder_to_workspace(
+            folder_id=1, target_workspace_id=99
+        )
+        assert result["folders_moved"] == 2
+        assert result["media_moved"] == 3
+        assert result["assets_moved"] == 2
+        mock_db.commit.assert_called_once()
+
+    @pytest.mark.anyio
+    async def test_move_folder_to_workspace_empty(self, folder_repo, mock_db):
+        mock_desc_res = MagicMock()
+        mock_desc_res.fetchall.return_value = []
+        mock_db.execute.return_value = mock_desc_res
+
+        result = await folder_repo.move_folder_to_workspace(
+            folder_id=999, target_workspace_id=99
+        )
+        assert result["folders_moved"] == 0
+        assert result["media_moved"] == 0
+        assert result["assets_moved"] == 0

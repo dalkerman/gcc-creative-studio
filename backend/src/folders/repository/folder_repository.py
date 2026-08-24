@@ -317,3 +317,59 @@ class FolderRepository(BaseRepository[Folder, FolderModel]):
         result = await self.db.execute(stmt)
         await self.db.commit()
         return result.rowcount
+
+    async def move_folder_to_workspace(
+        self, folder_id: int, target_workspace_id: int
+    ) -> dict[str, int]:
+        """Moves a folder hierarchy and all contained media items and source assets to a target workspace."""
+        descendant_ids = await self.get_descendant_ids(folder_id)
+        if not descendant_ids:
+            return {"folders_moved": 0, "media_moved": 0, "assets_moved": 0}
+
+        # 1. Update media items belonging to any folder in the subtree
+        media_stmt = (
+            update(MediaItem)
+            .where(MediaItem.folder_id.in_(descendant_ids))
+            .values(workspace_id=target_workspace_id)
+        )
+        media_res = await self.db.execute(media_stmt)
+
+        # 2. Update source assets belonging to any folder in the subtree
+        asset_stmt = (
+            update(SourceAsset)
+            .where(SourceAsset.folder_id.in_(descendant_ids))
+            .values(workspace_id=target_workspace_id)
+        )
+        asset_res = await self.db.execute(asset_stmt)
+
+        # 3. Update descendant child folders (excluding the root folder being moved)
+        child_folder_ids = [fid for fid in descendant_ids if fid != folder_id]
+        if child_folder_ids:
+            child_folders_stmt = (
+                update(Folder)
+                .where(
+                    Folder.id.in_(child_folder_ids),
+                    Folder.deleted_at.is_(None),
+                )
+                .values(workspace_id=target_workspace_id)
+            )
+            await self.db.execute(child_folders_stmt)
+
+        # 4. Update the root folder being moved: set workspace_id and reset parent_id to None
+        root_folder_stmt = (
+            update(Folder)
+            .where(
+                Folder.id == folder_id,
+                Folder.deleted_at.is_(None),
+            )
+            .values(workspace_id=target_workspace_id, parent_id=None)
+        )
+        await self.db.execute(root_folder_stmt)
+
+        await self.db.commit()
+
+        return {
+            "folders_moved": len(descendant_ids),
+            "media_moved": media_res.rowcount,
+            "assets_moved": asset_res.rowcount,
+        }

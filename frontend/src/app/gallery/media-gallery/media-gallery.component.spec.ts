@@ -336,6 +336,7 @@ describe('MediaGalleryComponent', () => {
       (component as any).executeMoveToWorkspace(
         [1],
         [2],
+        [],
         88,
         'Target Workspace',
       );
@@ -350,6 +351,60 @@ describe('MediaGalleryComponent', () => {
       expect(component.images.length).toBe(1);
       expect(component.images[0].id).toBe(3);
       expect(component.selectedItems.size).toBe(0);
+    });
+
+    it('should call galleryService.bulkMove when moving folder across workspaces', () => {
+      spyOn(galleryService, 'bulkMove').and.returnValue(of({moved_count: 1}));
+      spyOn(component, 'loadFolders');
+      component.folders = [
+        {id: 10, name: 'Folder 1', workspace_id: 1, parent_id: null} as any,
+        {id: 20, name: 'Folder 2', workspace_id: 1, parent_id: null} as any,
+      ];
+
+      (component as any).executeMoveToWorkspace(
+        [],
+        [],
+        [10],
+        88,
+        'Target Workspace',
+      );
+
+      expect(galleryService.bulkMove).toHaveBeenCalledWith(
+        [{id: 10, type: 'folder'}],
+        88,
+      );
+      expect(component.folders.length).toBe(1);
+      expect(component.folders[0].id).toBe(20);
+      expect(component.loadFolders).toHaveBeenCalled();
+    });
+
+    it('should handle openMoveFolderDialog when destination workspace is chosen', () => {
+      const mockDialogRef = {
+        afterClosed: () =>
+          of({destinationWorkspaceId: 88, destinationName: 'Target Workspace'}),
+      };
+      spyOn(component.dialog, 'open').and.returnValue(mockDialogRef as any);
+      const executeSpy = spyOn(
+        component as any,
+        'executeMoveToWorkspace',
+      ).and.callThrough();
+      spyOn(galleryService, 'bulkMove').and.returnValue(of({moved_count: 1}));
+
+      const folder = {
+        id: 10,
+        name: 'Folder 1',
+        workspace_id: 1,
+        parent_id: null,
+      } as any;
+      component.openMoveFolderDialog(folder);
+
+      expect(executeSpy).toHaveBeenCalledWith(
+        [],
+        [],
+        [10],
+        88,
+        'Target Workspace',
+      );
     });
   });
 });

@@ -1153,13 +1153,13 @@ export class MediaGalleryComponent implements OnInit, OnDestroy, AfterViewInit {
               },
             });
         } else if (result.destinationWorkspaceId !== undefined) {
-          // TODO: Handle moving to another workspace.
-          this.snackBar.open(
-            'Moving to another workspace not yet supported',
-            'Close',
-            {
-              duration: 3000,
-            },
+          const destName = result.destinationName || 'Workspace';
+          this.executeMoveToWorkspace(
+            [],
+            [],
+            [folder.id],
+            result.destinationWorkspaceId,
+            destName,
           );
         }
       });
@@ -1208,6 +1208,7 @@ export class MediaGalleryComponent implements OnInit, OnDestroy, AfterViewInit {
           this.executeMoveToWorkspace(
             mediaItemIds,
             sourceAssetIds,
+            [],
             result.destinationWorkspaceId,
             destName,
           );
@@ -1363,10 +1364,12 @@ export class MediaGalleryComponent implements OnInit, OnDestroy, AfterViewInit {
   private executeMoveToWorkspace(
     mediaItemIds: number[],
     sourceAssetIds: number[],
+    folderIds: number[] = [],
     destinationWorkspaceId: number,
     destinationName: string,
   ): void {
-    const totalCount = mediaItemIds.length + sourceAssetIds.length;
+    const totalCount =
+      mediaItemIds.length + sourceAssetIds.length + folderIds.length;
     if (totalCount === 0) return;
 
     // Optimistic UI update: remove moved items from current view
@@ -1374,14 +1377,17 @@ export class MediaGalleryComponent implements OnInit, OnDestroy, AfterViewInit {
     const movedAssetSet = new Set(
       sourceAssetIds.map(id => `source_asset:${id}`),
     );
+    const movedFolderSet = new Set(folderIds);
 
     const prevImages = [...this.images];
+    const prevFolders = [...this.folders];
 
     this.images = this.images.filter(
       img =>
         !movedMediaSet.has(`${img.itemType}:${img.id}`) &&
         !movedAssetSet.has(`${img.itemType}:${img.id}`),
     );
+    this.folders = this.folders.filter(f => !movedFolderSet.has(f.id));
     this.updateGroups();
 
     // Clear selection for moved items
@@ -1398,6 +1404,7 @@ export class MediaGalleryComponent implements OnInit, OnDestroy, AfterViewInit {
     const itemsToMove = [
       ...mediaItemIds.map(id => ({id, type: 'media_item'})),
       ...sourceAssetIds.map(id => ({id, type: 'source_asset'})),
+      ...folderIds.map(id => ({id, type: 'folder'})),
     ];
 
     this.isMoving = true;
@@ -1412,12 +1419,14 @@ export class MediaGalleryComponent implements OnInit, OnDestroy, AfterViewInit {
             {duration: 3000},
           );
           this.searchTerm();
+          this.loadFolders();
           this.isMoving = false;
         },
         error: err => {
           console.error('Error moving items to workspace:', err);
           // Rollback optimistic update
           this.images = prevImages;
+          this.folders = prevFolders;
           this.updateGroups();
           this.isMoving = false;
           this.snackBar.open('Failed to move items', 'Close', {

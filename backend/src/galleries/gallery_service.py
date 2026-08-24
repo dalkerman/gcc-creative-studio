@@ -58,6 +58,7 @@ from src.users.user_model import UserModel, UserRoleEnum
 from src.workspaces.repository.workspace_repository import WorkspaceRepository
 from src.workspaces.workspace_auth_guard import WorkspaceAuth
 from src.tags.repository.tags_repository import TagsRepository
+from src.folders.repository.folder_repository import FolderRepository
 
 logger = logging.getLogger(__name__)
 
@@ -77,6 +78,7 @@ class GalleryService:
         imagen_service: ImagenService = Depends(),
         gcs_service: GcsService = Depends(),
         tags_repo: TagsRepository = Depends(),
+        folder_repo: FolderRepository = Depends(),
     ):
         """Initializes the service with its dependencies."""
         self.media_repo = media_repo
@@ -89,6 +91,7 @@ class GalleryService:
         self.imagen_service = imagen_service
         self.gcs_service = gcs_service
         self.tags_repo = tags_repo
+        self.folder_repo = folder_repo
 
     async def _enrich_source_asset_link(
         self,
@@ -814,6 +817,26 @@ class GalleryService:
                             "workspace_id": bulk_move_dto.target_workspace_id,
                             "folder_id": None,
                         },
+                    )
+                    moved_count += 1
+
+                elif item.type == "folder":
+                    folder = await self.folder_repo.get_folder_by_id(item.id)
+                    if not folder:
+                        continue
+
+                    # Authorize source workspace access
+                    await self.workspace_auth.authorize(
+                        workspace_id=folder.workspace_id,
+                        user=current_user,
+                    )
+
+                    if folder.workspace_id == bulk_move_dto.target_workspace_id:
+                        continue
+
+                    await self.folder_repo.move_folder_to_workspace(
+                        folder_id=folder.id,
+                        target_workspace_id=bulk_move_dto.target_workspace_id,
                     )
                     moved_count += 1
 

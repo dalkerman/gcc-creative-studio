@@ -51,6 +51,7 @@ def fixture_service():
     mock_imagen_service = AsyncMock()
     mock_gcs_service = MagicMock()
     mock_tags_repo = AsyncMock()
+    mock_folder_repo = AsyncMock()
 
     service = GalleryService(
         media_repo=mock_media_repo,
@@ -63,6 +64,7 @@ def fixture_service():
         imagen_service=mock_imagen_service,
         gcs_service=mock_gcs_service,
         tags_repo=mock_tags_repo,
+        folder_repo=mock_folder_repo,
     )
 
     # Attach mocks for ease of use in tests
@@ -75,6 +77,7 @@ def fixture_service():
     service.mock_workspace_auth = mock_workspace_auth
     service.mock_gcs_service = mock_gcs_service
     service.mock_tags_repo = mock_tags_repo
+    service.mock_folder_repo = mock_folder_repo
 
     return service
 
@@ -727,3 +730,74 @@ async def test_bulk_move_source_asset_success(service):
     service.mock_source_asset_repo.update.assert_called_once_with(
         5, {"workspace_id": 88, "folder_id": None}
     )
+
+
+@pytest.mark.anyio
+async def test_bulk_move_folder_success(service):
+    from pydantic import BaseModel
+    from src.galleries.dto.bulk_move_dto import BulkMoveDto, BulkMoveItemDto
+
+    class DummyFolder(BaseModel):
+        id: int
+        workspace_id: int
+        name: str
+
+    bulk_dto = BulkMoveDto(
+        target_workspace_id=88,
+        items=[BulkMoveItemDto(id=10, type="folder")],
+    )
+    current_user = UserModel(
+        id=1,
+        email="user@test.com",
+        name="User",
+        roles=[UserRoleEnum.USER],
+    )
+
+    folder = DummyFolder(id=10, workspace_id=99, name="Campaigns")
+    service.mock_folder_repo.get_folder_by_id.return_value = folder
+    service.mock_folder_repo.move_folder_to_workspace.return_value = {
+        "folders_moved": 2,
+        "media_moved": 3,
+        "assets_moved": 1,
+    }
+
+    result = await service.bulk_move(bulk_dto, current_user)
+    assert result["moved_count"] == 1
+    service.mock_workspace_auth.authorize.assert_any_call(
+        workspace_id=88, user=current_user
+    )
+    service.mock_workspace_auth.authorize.assert_any_call(
+        workspace_id=99, user=current_user
+    )
+    service.mock_folder_repo.move_folder_to_workspace.assert_called_once_with(
+        folder_id=10, target_workspace_id=88
+    )
+
+
+@pytest.mark.anyio
+async def test_bulk_move_folder_same_workspace(service):
+    from pydantic import BaseModel
+    from src.galleries.dto.bulk_move_dto import BulkMoveDto, BulkMoveItemDto
+
+    class DummyFolder(BaseModel):
+        id: int
+        workspace_id: int
+        name: str
+
+    bulk_dto = BulkMoveDto(
+        target_workspace_id=88,
+        items=[BulkMoveItemDto(id=10, type="folder")],
+    )
+    current_user = UserModel(
+        id=1,
+        email="user@test.com",
+        name="User",
+        roles=[UserRoleEnum.USER],
+    )
+
+    folder = DummyFolder(id=10, workspace_id=88, name="Campaigns")
+    service.mock_folder_repo.get_folder_by_id.return_value = folder
+
+    result = await service.bulk_move(bulk_dto, current_user)
+    assert result["moved_count"] == 0
+    service.mock_folder_repo.move_folder_to_workspace.assert_not_called()
