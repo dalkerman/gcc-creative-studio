@@ -57,6 +57,7 @@ def fixture_mock_service():
     service.restore_item = AsyncMock()
     service.bulk_download = AsyncMock()
     service.bulk_copy = AsyncMock()
+    service.bulk_move = AsyncMock()
     return service
 
 
@@ -153,3 +154,23 @@ def test_bulk_copy_items_success(client, mock_service):
     assert response.status_code == 200
     assert response.json() == {"copied_count": 1}
     mock_service.bulk_copy.assert_called_once()
+
+
+def test_bulk_move_items_success(client, mock_service):
+    mock_service.bulk_move.return_value = {
+        "moved_count": 1,
+        "copied_count": 1,
+        "deleted_count": 1,
+    }
+    payload = {
+        "items": [{"id": 1, "type": "media_item"}],
+        "target_workspace_id": 2,
+    }
+    response = client.post("/api/gallery/bulk-move", json=payload)
+    assert response.status_code == 200
+    assert response.json() == {
+        "moved_count": 1,
+        "copied_count": 1,
+        "deleted_count": 1,
+    }
+    mock_service.bulk_move.assert_called_once()

@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import asyncio
+from collections import defaultdict
 import logging
 import mimetypes
 import tempfile
@@ -30,9 +31,10 @@ from src.common.schema.media_item_model import (
     SourceMediaItemLink,
 )
 from src.common.storage_service import GcsService
-from src.galleries.dto.bulk_copy_dto import BulkCopyDto
-from src.galleries.dto.bulk_delete_dto import BulkDeleteDto
+from src.galleries.dto.bulk_copy_dto import BulkCopyDto, BulkCopyItemDto
+from src.galleries.dto.bulk_delete_dto import BulkDeleteDto, BulkDeleteItemDto
 from src.galleries.dto.bulk_download_dto import BulkDownloadDto
+from src.galleries.dto.bulk_move_dto import BulkMoveDto
 from src.galleries.dto.gallery_response_dto import (
     MediaItemResponse,
     SourceAssetLinkResponse,
@@ -685,7 +687,7 @@ class GalleryService:
             user=current_user,
         )
 
-        copied_count = 0
+        copied_items = []
         for item in bulk_copy_dto.items:
             try:
                 if item.type == "media_item":
@@ -721,7 +723,13 @@ class GalleryService:
                     new_item_data["user_email"] = current_user.email
 
                     await self.media_repo.create(new_item_data)
-                    copied_count += 1
+                    copied_items.append(
+                        {
+                            "id": item.id,
+                            "type": item.type,
+                            "source_workspace_id": media_item.workspace_id,
+                        }
+                    )
 
                 elif item.type == "source_asset":
                     asset = await self.source_asset_repo.get_by_id(item.id)
@@ -754,9 +762,65 @@ class GalleryService:
                     new_asset_data["user_id"] = current_user.id
 
                     await self.source_asset_repo.create(new_asset_data)
-                    copied_count += 1
+                    copied_items.append(
+                        {
+                            "id": item.id,
+                            "type": item.type,
+                            "source_workspace_id": asset.workspace_id,
+                        }
+                    )
 
             except Exception as e:
                 logger.error(f"Error copying {item.type} {item.id}: {e}")
 
-        return {"copied_count": copied_count}
+        return {
+            "copied_count": len(copied_items),
+            "copied_items": copied_items,
+        }
+
+    async def bulk_move(
+        self,
+        bulk_move_dto: BulkMoveDto,
+        current_user: UserModel,
+    ) -> dict:
+        """Moves multiple gallery items to a target workspace by copying and deleting them."""
+        # 1. Authorize target workspace access
+        await self.workspace_auth.authorize(
+            workspace_id=bulk_move_dto.target_workspace_id,
+            user=current_user,
+        )
+
+        # 2. Copy items to target workspace using bulk_copy
+        copy_dto = BulkCopyDto(
+            items=[
+                BulkCopyItemDto(id=item.id, type=item.type)
+                for item in bulk_move_dto.items
+            ],
+            target_workspace_id=bulk_move_dto.target_workspace_id,
+        )
+        copy_result = await self.bulk_copy(copy_dto, current_user)
+        copied_items = copy_result.get("copied_items", [])
+
+        # 3. Delete successfully copied items from their source workspaces using bulk_delete
+        items_by_source_ws: dict[int, list[BulkDeleteItemDto]] = defaultdict(
+            list
+        )
+        for item in copied_items:
+            items_by_source_ws[item["source_workspace_id"]].append(
+                BulkDeleteItemDto(id=item["id"], type=item["type"])
+            )
+
+        deleted_count = 0
+        for ws_id, ws_items in items_by_source_ws.items():
+            delete_dto = BulkDeleteDto(
+                items=ws_items,
+                workspace_id=ws_id,
+            )
+            delete_result = await self.bulk_delete(delete_dto, current_user)
+            deleted_count += delete_result.get("deleted_count", 0)
+
+        return {
+            "moved_count": len(copied_items),
+            "copied_count": len(copied_items),
+            "deleted_count": deleted_count,
+        }

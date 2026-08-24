@@ -139,6 +139,7 @@ export class MediaGalleryComponent implements OnInit, OnDestroy, AfterViewInit {
   public isDeleting = false;
   public isDownloading = false;
   public isCopying = false;
+  public isMoving = false;
   public showAdvancedFilters = false;
 
   toggleAdvancedFilters() {
@@ -621,6 +622,36 @@ export class MediaGalleryComponent implements OnInit, OnDestroy, AfterViewInit {
         console.error('Error copying items:', err);
         this.snackBar.open('Failed to copy items', 'Close', {duration: 3000});
         this.isCopying = false;
+      },
+    });
+  }
+
+  private performMove(targetWorkspaceId: number): void {
+    const itemsToMove = Array.from(this.selectedItems).map(id => {
+      const [type, itemId] = id.split(':');
+      return {id: parseInt(itemId), type};
+    });
+
+    this.isMoving = true;
+    this.galleryService.bulkMove(itemsToMove, targetWorkspaceId).subscribe({
+      next: result => {
+        this.snackBar.open(
+          `${result.moved_count} items moved successfully`,
+          'Close',
+          {duration: 3000},
+        );
+        // remove the moved items from the local state
+        this.images = this.images.filter(
+          img => !this.selectedItems.has(`${img.itemType}:${img.id}`),
+        );
+        this.selectedItems.clear();
+        this.updateGroups();
+        this.isMoving = false;
+      },
+      error: err => {
+        console.error('Error moving items:', err);
+        this.snackBar.open('Failed to move items', 'Close', {duration: 3000});
+        this.isMoving = false;
       },
     });
   }
@@ -1195,7 +1226,7 @@ export class MediaGalleryComponent implements OnInit, OnDestroy, AfterViewInit {
             result.destinationFolderId === null
               ? 'All Media'
               : result.destinationName || 'Folder';
-          this.executeMove(
+          this.executeMoveToFolder(
             mediaItemIds,
             sourceAssetIds,
             [],
@@ -1203,14 +1234,7 @@ export class MediaGalleryComponent implements OnInit, OnDestroy, AfterViewInit {
             destName,
           );
         } else if (result.destinationWorkspaceId !== undefined) {
-          // TODO: Handle moving to another workspace.
-          this.snackBar.open(
-            'Moving to another workspace not yet supported',
-            'Close',
-            {
-              duration: 3000,
-            },
-          );
+          this.performMove(result.destinationWorkspaceId);
         }
       });
   }
@@ -1254,7 +1278,7 @@ export class MediaGalleryComponent implements OnInit, OnDestroy, AfterViewInit {
             ? 'All Media'
             : this.breadcrumbs.find(b => b.id === targetFolderId)?.name ||
               'Folder';
-        this.executeMove(
+        this.executeMoveToFolder(
           payload.mediaItemIds || [],
           payload.sourceAssetIds || [],
           payload.folderIds || [],
@@ -1274,7 +1298,7 @@ export class MediaGalleryComponent implements OnInit, OnDestroy, AfterViewInit {
     if (this.currentFolderId === targetFolder.id) {
       return;
     }
-    this.executeMove(
+    this.executeMoveToFolder(
       payload.mediaItemIds || [],
       payload.sourceAssetIds || [],
       payload.folderIds || [],
@@ -1283,7 +1307,7 @@ export class MediaGalleryComponent implements OnInit, OnDestroy, AfterViewInit {
     );
   }
 
-  private executeMove(
+  private executeMoveToFolder(
     mediaItemIds: number[],
     sourceAssetIds: number[],
     folderIds: number[],
