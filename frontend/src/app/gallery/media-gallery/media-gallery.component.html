@@ -248,16 +248,6 @@
           variant="primary"
           size="small"
           shape="circle"
-          (click)="openBulkAssignTagsDialog()"
-          title="Tag selected"
-          [disabled]="selectedItems.size === 0 || isCopying || isMoving || isDownloading || isDeleting"
-        >
-          <mat-icon>label</mat-icon>
-        </studio-button>
-        <studio-button
-          variant="primary"
-          size="small"
-          shape="circle"
           (click)="openBatchMoveDialog()"
           title="Move selected"
           [disabled]="selectedItems.size === 0 || isCopying || isMoving || isDownloading || isDeleting"
@@ -268,6 +258,16 @@
             mode="indeterminate"
             diameter="18"
           ></mat-progress-spinner>
+        </studio-button>
+        <studio-button
+          variant="primary"
+          size="small"
+          shape="circle"
+          (click)="openBulkAssignTagsDialog()"
+          title="Tag selected"
+          [disabled]="selectedItems.size === 0 || isCopying || isMoving || isDownloading || isDeleting"
+        >
+          <mat-icon>label</mat-icon>
         </studio-button>
         <studio-button
           variant="primary"
