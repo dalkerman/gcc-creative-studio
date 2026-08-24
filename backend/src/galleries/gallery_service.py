@@ -700,7 +700,7 @@ class GalleryService:
                     )
 
                     # Create a new MediaItem instance with updated workspace_id
-                    # exclude 'id', 'created_at', 'updated_at', 'deleted_at', 'deleted_by'
+                    # exclude 'id', 'created_at', 'updated_at', 'deleted_at', 'deleted_by', 'folder_id'
                     new_item_data = media_item.model_dump(
                         exclude={
                             "id",
@@ -709,6 +709,7 @@ class GalleryService:
                             "deleted_at",
                             "deleted_by",
                             "workspace_id",
+                            "folder_id",
                         },
                     )
                     new_item_data["workspace_id"] = (
@@ -742,6 +743,7 @@ class GalleryService:
                             "deleted_at",
                             "deleted_by",
                             "workspace_id",
+                            "folder_id",
                         },
                     )
                     new_asset_data["workspace_id"] = (

@@ -56,6 +56,7 @@ def fixture_mock_service():
     service.bulk_delete = AsyncMock()
     service.restore_item = AsyncMock()
     service.bulk_download = AsyncMock()
+    service.bulk_copy = AsyncMock()
     return service
 
 
@@ -140,3 +141,15 @@ def test_bulk_download_items_success(client, mock_service):
     payload = {"items": [{"id": 1, "type": "media_item"}], "workspace_id": 1}
     response = client.post("/api/gallery/bulk-download", json=payload)
     assert response.status_code == 200
+
+
+def test_bulk_copy_items_success(client, mock_service):
+    mock_service.bulk_copy.return_value = {"copied_count": 1}
+    payload = {
+        "items": [{"id": 1, "type": "media_item"}],
+        "target_workspace_id": 2,
+    }
+    response = client.post("/api/gallery/bulk-copy", json=payload)
+    assert response.status_code == 200
+    assert response.json() == {"copied_count": 1}
+    mock_service.bulk_copy.assert_called_once()

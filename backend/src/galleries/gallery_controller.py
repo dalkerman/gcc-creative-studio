@@ -152,3 +152,7 @@ async def bulk_copy_items(
     service: GalleryService = Depends(),
 ):
     """Bulk copy media items and source assets to another workspace."""
+    return await service.bulk_copy(
+        bulk_copy_dto=bulk_copy_dto,
+        current_user=current_user,
+    )

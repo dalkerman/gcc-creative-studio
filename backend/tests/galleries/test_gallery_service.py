@@ -254,6 +254,7 @@ async def test_bulk_copy_success(service):
     class DummyMedia(BaseModel):
         id: int
         workspace_id: int
+        folder_id: int | None = None
         user_id: int
         user_email: str
         gcs_uris: list
@@ -272,6 +273,7 @@ async def test_bulk_copy_success(service):
     mock_media = DummyMedia(
         id=1,
         workspace_id=99,
+        folder_id=12,
         user_id=1,
         user_email="user@test.com",
         gcs_uris=[],
@@ -285,6 +287,7 @@ async def test_bulk_copy_success(service):
     service.mock_media_repo.create.assert_called_once()
     args, kwargs = service.mock_media_repo.create.call_args
     assert args[0]["workspace_id"] == 88
+    assert "folder_id" not in args[0]
 
 
 @pytest.mark.anyio
@@ -448,6 +451,7 @@ async def test_bulk_copy_source_asset(service):
     asset = SourceAssetModel(
         id=5,
         workspace_id=99,
+        folder_id=15,
         user_id=1,
         gcs_uri="gs://b",
         original_filename="a",
@@ -461,6 +465,9 @@ async def test_bulk_copy_source_asset(service):
     result = await service.bulk_copy(bulk_dto, current_user)
     assert result["copied_count"] == 1
     service.mock_source_asset_repo.create.assert_called_once()
+    args, kwargs = service.mock_source_asset_repo.create.call_args
+    assert args[0]["workspace_id"] == 88
+    assert "folder_id" not in args[0]
 
 
 @pytest.mark.anyio
