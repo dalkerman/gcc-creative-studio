@@ -388,6 +388,17 @@ export class GalleryService implements OnDestroy {
     });
   }
 
+  bulkMove(
+    items: {id: number; type: string}[],
+    targetWorkspaceId: number,
+  ): Observable<{moved_count: number}> {
+    const url = `${environment.backendURL}/gallery/bulk-move`;
+    return this.http.post<{moved_count: number}>(url, {
+      items,
+      target_workspace_id: targetWorkspaceId,
+    });
+  }
+
   restoreMediaItem(id: number, itemType: string): Observable<any> {
     const url = `${environment.backendURL}/gallery/items/${id}/restore?item_type=${itemType}`;
     return this.http.post(url, {});

@@ -643,3 +643,87 @@ def test_unified_gallery_item_response_none_gcs_uris_filter():
     item = UnifiedGalleryItemResponse.model_validate(raw_data)
     assert item.gcs_uris == []
     assert item.thumbnail_uris == []
+
+
+@pytest.mark.anyio
+async def test_bulk_move_media_item_success(service):
+    from pydantic import BaseModel
+
+    from src.galleries.dto.bulk_move_dto import BulkMoveDto, BulkMoveItemDto
+
+    class DummyMedia(BaseModel):
+        id: int
+        workspace_id: int
+        folder_id: int | None = None
+        user_id: int
+        user_email: str
+        gcs_uris: list
+
+    bulk_dto = BulkMoveDto(
+        target_workspace_id=88,
+        items=[BulkMoveItemDto(id=1, type="media_item")],
+    )
+    current_user = UserModel(
+        id=1,
+        email="user@test.com",
+        name="User",
+        roles=[UserRoleEnum.USER],
+    )
+
+    mock_media = DummyMedia(
+        id=1,
+        workspace_id=99,
+        folder_id=12,
+        user_id=1,
+        user_email="user@test.com",
+        gcs_uris=[],
+    )
+    service.mock_media_repo.get_by_id.return_value = mock_media
+
+    result = await service.bulk_move(bulk_dto, current_user)
+
+    assert result["moved_count"] == 1
+    service.mock_media_repo.update.assert_called_once_with(
+        1, {"workspace_id": 88, "folder_id": None}
+    )
+
+
+@pytest.mark.anyio
+async def test_bulk_move_source_asset_success(service):
+    from src.galleries.dto.bulk_move_dto import BulkMoveDto, BulkMoveItemDto
+    from src.source_assets.schema.source_asset_model import (
+        AssetScopeEnum,
+        AssetTypeEnum,
+        SourceAssetModel,
+    )
+
+    bulk_dto = BulkMoveDto(
+        target_workspace_id=88,
+        items=[BulkMoveItemDto(id=5, type="source_asset")],
+    )
+    current_user = UserModel(
+        id=1,
+        email="user@test.com",
+        name="User",
+        roles=[UserRoleEnum.USER],
+    )
+
+    asset = SourceAssetModel(
+        id=5,
+        workspace_id=99,
+        folder_id=15,
+        user_id=1,
+        gcs_uri="gs://b",
+        original_filename="a",
+        file_hash="h",
+        scope=AssetScopeEnum.PRIVATE,
+        mime_type=MimeTypeEnum.IMAGE_PNG,
+        asset_type=AssetTypeEnum.GENERIC_IMAGE,
+    )
+    service.mock_source_asset_repo.get_by_id.return_value = asset
+
+    result = await service.bulk_move(bulk_dto, current_user)
+    assert result["moved_count"] == 1
+    service.mock_source_asset_repo.update.assert_called_once_with(
+        5, {"workspace_id": 88, "folder_id": None}
+    )

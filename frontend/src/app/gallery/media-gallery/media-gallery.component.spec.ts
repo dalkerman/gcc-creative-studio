@@ -37,6 +37,7 @@ describe('MediaGalleryComponent', () => {
   let fixture: ComponentFixture<MediaGalleryComponent>;
   let uploadService: MediaUploadService;
   let folderService: jasmine.SpyObj<FolderService>;
+  let galleryService: GalleryService;
 
   beforeEach(async () => {
     const folderServiceSpy = jasmine.createSpyObj('FolderService', [
@@ -91,6 +92,7 @@ describe('MediaGalleryComponent', () => {
             bulkDelete: () => of({deleted_count: 1}),
             bulkDownload: () => of(new Blob()),
             bulkCopy: () => of({}),
+            bulkMove: () => of({moved_count: 1}),
           },
         },
         {
@@ -138,6 +140,7 @@ describe('MediaGalleryComponent', () => {
     folderService = TestBed.inject(
       FolderService,
     ) as jasmine.SpyObj<FolderService>;
+    galleryService = TestBed.inject(GalleryService);
     fixture.detectChanges();
   });
 
@@ -318,6 +321,35 @@ describe('MediaGalleryComponent', () => {
 
       component.onBreadcrumbDragOver(mockEvent, 2);
       expect(component.dragOverBreadcrumbId).toBe(2);
+    });
+
+    it('should call galleryService.bulkMove when moving items across workspaces', () => {
+      spyOn(galleryService, 'bulkMove').and.returnValue(of({moved_count: 2}));
+      component.images = [
+        {id: 1, itemType: 'media_item'} as any,
+        {id: 2, itemType: 'source_asset'} as any,
+        {id: 3, itemType: 'media_item'} as any,
+      ];
+      component.selectedItems.add('media_item:1');
+      component.selectedItems.add('source_asset:2');
+
+      (component as any).executeMoveToWorkspace(
+        [1],
+        [2],
+        88,
+        'Target Workspace',
+      );
+
+      expect(galleryService.bulkMove).toHaveBeenCalledWith(
+        [
+          {id: 1, type: 'media_item'},
+          {id: 2, type: 'source_asset'},
+        ],
+        88,
+      );
+      expect(component.images.length).toBe(1);
+      expect(component.images[0].id).toBe(3);
+      expect(component.selectedItems.size).toBe(0);
     });
   });
 });

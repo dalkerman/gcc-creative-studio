@@ -33,6 +33,7 @@ from src.common.storage_service import GcsService
 from src.galleries.dto.bulk_copy_dto import BulkCopyDto
 from src.galleries.dto.bulk_delete_dto import BulkDeleteDto
 from src.galleries.dto.bulk_download_dto import BulkDownloadDto
+from src.galleries.dto.bulk_move_dto import BulkMoveDto
 from src.galleries.dto.gallery_response_dto import (
     MediaItemResponse,
     SourceAssetLinkResponse,
@@ -760,3 +761,65 @@ class GalleryService:
                 logger.error(f"Error copying {item.type} {item.id}: {e}")
 
         return {"copied_count": copied_count}
+
+    async def bulk_move(
+        self,
+        bulk_move_dto: BulkMoveDto,
+        current_user: UserModel,
+    ) -> dict:
+        """Moves multiple gallery items to a target workspace."""
+        # 1. Authorize target workspace access
+        await self.workspace_auth.authorize(
+            workspace_id=bulk_move_dto.target_workspace_id,
+            user=current_user,
+        )
+
+        moved_count = 0
+        for item in bulk_move_dto.items:
+            try:
+                if item.type == "media_item":
+                    media_item = await self.media_repo.get_by_id(item.id)
+                    if not media_item:
+                        continue
+
+                    # Authorize source workspace access (where the item is currently)
+                    await self.workspace_auth.authorize(
+                        workspace_id=media_item.workspace_id,
+                        user=current_user,
+                    )
+
+                    await self.media_repo.update(
+                        item.id,
+                        {
+                            "workspace_id": bulk_move_dto.target_workspace_id,
+                            "folder_id": None,
+                        },
+                    )
+                    moved_count += 1
+
+                elif item.type == "source_asset":
+                    asset = await self.source_asset_repo.get_by_id(item.id)
+                    if not asset:
+                        continue
+
+                    # Authorize source workspace access
+                    await self.workspace_auth.authorize(
+                        workspace_id=asset.workspace_id,
+                        user=current_user,
+                    )
+
+                    await self.source_asset_repo.update(
+                        item.id,
+                        {
+                            "workspace_id": bulk_move_dto.target_workspace_id,
+                            "folder_id": None,
+                        },
+                    )
+                    moved_count += 1
+
+            except Exception as e:
+                logger.error(f"Error moving {item.type} {item.id}: {e}")
+
+        return {"moved_count": moved_count}
+
+    bulk_move_items = bulk_move

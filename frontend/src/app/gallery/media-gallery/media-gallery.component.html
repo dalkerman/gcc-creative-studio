@@ -235,7 +235,7 @@
           shape="circle"
           (click)="copySelected()"
           title="Copy selected"
-          [disabled]="selectedItems.size === 0 || isCopying || isDownloading || isDeleting"
+          [disabled]="selectedItems.size === 0 || isCopying || isMoving || isDownloading || isDeleting"
         >
           <mat-icon *ngIf="!isCopying">content_copy</mat-icon>
           <mat-progress-spinner
@@ -250,7 +250,7 @@
           shape="circle"
           (click)="openBulkAssignTagsDialog()"
           title="Tag selected"
-          [disabled]="selectedItems.size === 0 || isCopying || isDownloading || isDeleting"
+          [disabled]="selectedItems.size === 0 || isCopying || isMoving || isDownloading || isDeleting"
         >
           <mat-icon>label</mat-icon>
         </studio-button>
@@ -260,9 +260,14 @@
           shape="circle"
           (click)="openBatchMoveDialog()"
           title="Move selected"
-          [disabled]="selectedItems.size === 0 || isCopying || isDownloading || isDeleting"
+          [disabled]="selectedItems.size === 0 || isCopying || isMoving || isDownloading || isDeleting"
         >
-          <mat-icon>drive_file_move</mat-icon>
+          <mat-icon *ngIf="!isMoving">drive_file_move</mat-icon>
+          <mat-progress-spinner
+            *ngIf="isMoving"
+            mode="indeterminate"
+            diameter="18"
+          ></mat-progress-spinner>
         </studio-button>
         <studio-button
           variant="primary"
@@ -270,7 +275,7 @@
           shape="circle"
           (click)="downloadSelected()"
           title="Download selected"
-          [disabled]="isDownloading || isDeleting || isCopying"
+          [disabled]="isDownloading || isDeleting || isCopying || isMoving"
         >
           <mat-icon *ngIf="!isDownloading">download</mat-icon>
           <mat-progress-spinner
@@ -286,7 +291,7 @@
           shape="circle"
           (click)="deleteSelected()"
           title="Delete selected"
-          [disabled]="isDeleting || isDownloading || isCopying"
+          [disabled]="isDeleting || isDownloading || isCopying || isMoving"
         >
           <mat-icon *ngIf="!isDeleting">delete</mat-icon>
           <mat-progress-spinner

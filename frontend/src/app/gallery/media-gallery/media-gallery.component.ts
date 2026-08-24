@@ -139,6 +139,7 @@ export class MediaGalleryComponent implements OnInit, OnDestroy, AfterViewInit {
   public isDeleting = false;
   public isDownloading = false;
   public isCopying = false;
+  public isMoving = false;
   public showAdvancedFilters = false;
 
   toggleAdvancedFilters() {
@@ -1203,13 +1204,12 @@ export class MediaGalleryComponent implements OnInit, OnDestroy, AfterViewInit {
             destName,
           );
         } else if (result.destinationWorkspaceId !== undefined) {
-          // TODO: Handle moving to another workspace.
-          this.snackBar.open(
-            'Moving to another workspace not yet supported',
-            'Close',
-            {
-              duration: 3000,
-            },
+          const destName = result.destinationName || 'Workspace';
+          this.executeMoveToWorkspace(
+            mediaItemIds,
+            sourceAssetIds,
+            result.destinationWorkspaceId,
+            destName,
           );
         }
       });
@@ -1326,6 +1326,8 @@ export class MediaGalleryComponent implements OnInit, OnDestroy, AfterViewInit {
       this.lastSelectedIndex = null;
     }
 
+    this.isMoving = true;
+
     this.folderService
       .moveItems({
         workspaceId,
@@ -1341,8 +1343,8 @@ export class MediaGalleryComponent implements OnInit, OnDestroy, AfterViewInit {
             'Close',
             {duration: 3000},
           );
+          this.isMoving = false;
           this.loadFolders();
-          this.searchTerm();
         },
         error: err => {
           console.error('Error moving items via drag and drop:', err);
@@ -1350,6 +1352,74 @@ export class MediaGalleryComponent implements OnInit, OnDestroy, AfterViewInit {
           this.images = prevImages;
           this.folders = prevFolders;
           this.updateGroups();
+          this.isMoving = false;
+          this.snackBar.open('Failed to move items', 'Close', {
+            duration: 3000,
+          });
+        },
+      });
+  }
+
+  private executeMoveToWorkspace(
+    mediaItemIds: number[],
+    sourceAssetIds: number[],
+    destinationWorkspaceId: number,
+    destinationName: string,
+  ): void {
+    const totalCount = mediaItemIds.length + sourceAssetIds.length;
+    if (totalCount === 0) return;
+
+    // Optimistic UI update: remove moved items from current view
+    const movedMediaSet = new Set(mediaItemIds.map(id => `media_item:${id}`));
+    const movedAssetSet = new Set(
+      sourceAssetIds.map(id => `source_asset:${id}`),
+    );
+
+    const prevImages = [...this.images];
+
+    this.images = this.images.filter(
+      img =>
+        !movedMediaSet.has(`${img.itemType}:${img.id}`) &&
+        !movedAssetSet.has(`${img.itemType}:${img.id}`),
+    );
+    this.updateGroups();
+
+    // Clear selection for moved items
+    for (const key of movedMediaSet) {
+      this.selectedItems.delete(key);
+    }
+    for (const key of movedAssetSet) {
+      this.selectedItems.delete(key);
+    }
+    if (this.selectedItems.size === 0) {
+      this.lastSelectedIndex = null;
+    }
+
+    const itemsToMove = [
+      ...mediaItemIds.map(id => ({id, type: 'media_item'})),
+      ...sourceAssetIds.map(id => ({id, type: 'source_asset'})),
+    ];
+
+    this.isMoving = true;
+
+    this.galleryService
+      .bulkMove(itemsToMove, destinationWorkspaceId)
+      .subscribe({
+        next: res => {
+          this.snackBar.open(
+            `${res.moved_count} item${res.moved_count === 1 ? '' : 's'} moved to "${destinationName}"`,
+            'Close',
+            {duration: 3000},
+          );
+          this.searchTerm();
+          this.isMoving = false;
+        },
+        error: err => {
+          console.error('Error moving items to workspace:', err);
+          // Rollback optimistic update
+          this.images = prevImages;
+          this.updateGroups();
+          this.isMoving = false;
           this.snackBar.open('Failed to move items', 'Close', {
             duration: 3000,
           });
