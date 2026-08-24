@@ -31,6 +31,7 @@ from src.common.schema.media_item_model import (
     SourceMediaItemLink,
 )
 from src.common.storage_service import GcsService
+from src.folders.repository.folder_repository import FolderRepository
 from src.galleries.dto.bulk_copy_dto import BulkCopyDto, BulkCopyItemDto
 from src.galleries.dto.bulk_delete_dto import BulkDeleteDto, BulkDeleteItemDto
 from src.galleries.dto.bulk_download_dto import BulkDownloadDto
@@ -78,6 +79,7 @@ class GalleryService:
         imagen_service: ImagenService = Depends(),
         gcs_service: GcsService = Depends(),
         tags_repo: TagsRepository = Depends(),
+        folder_repo: FolderRepository = Depends(),
     ):
         """Initializes the service with its dependencies."""
         self.media_repo = media_repo
@@ -90,6 +92,7 @@ class GalleryService:
         self.imagen_service = imagen_service
         self.gcs_service = gcs_service
         self.tags_repo = tags_repo
+        self.folder_repo = folder_repo
 
     async def _enrich_source_asset_link(
         self,
@@ -783,44 +786,81 @@ class GalleryService:
         bulk_move_dto: BulkMoveDto,
         current_user: UserModel,
     ) -> dict:
-        """Moves multiple gallery items to a target workspace by copying and deleting them."""
+        """Moves multiple gallery items (media items, source assets, and folders) to a target workspace."""
         # 1. Authorize target workspace access
         await self.workspace_auth.authorize(
             workspace_id=bulk_move_dto.target_workspace_id,
             user=current_user,
         )
 
-        # 2. Copy items to target workspace using bulk_copy
-        copy_dto = BulkCopyDto(
-            items=[
-                BulkCopyItemDto(id=item.id, type=item.type)
-                for item in bulk_move_dto.items
-            ],
-            target_workspace_id=bulk_move_dto.target_workspace_id,
-        )
-        copy_result = await self.bulk_copy(copy_dto, current_user)
-        copied_items = copy_result.get("copied_items", [])
+        folder_items = [
+            item for item in bulk_move_dto.items if item.type == "folder"
+        ]
+        loose_items = [
+            item for item in bulk_move_dto.items if item.type != "folder"
+        ]
 
-        # 3. Delete successfully copied items from their source workspaces using bulk_delete
-        items_by_source_ws: dict[int, list[BulkDeleteItemDto]] = defaultdict(
-            list
-        )
-        for item in copied_items:
-            items_by_source_ws[item["source_workspace_id"]].append(
-                BulkDeleteItemDto(id=item["id"], type=item["type"])
-            )
+        # 2. Process folders
+        moved_folder_count = 0
+        for item in folder_items:
+            try:
+                folder = await self.folder_repo.get_folder_by_id(item.id)
+                if not folder:
+                    logger.warning(f"Folder {item.id} not found for bulk move.")
+                    continue
+                if folder.workspace_id == bulk_move_dto.target_workspace_id:
+                    continue
 
+                # Authorize source workspace access
+                await self.workspace_auth.authorize(
+                    workspace_id=folder.workspace_id,
+                    user=current_user,
+                )
+
+                await self.folder_repo.move_folder_tree_to_workspace(
+                    folder_id=item.id,
+                    target_workspace_id=bulk_move_dto.target_workspace_id,
+                )
+                moved_folder_count += 1
+            except Exception as e:
+                logger.error(
+                    f"Error moving folder {item.id} to workspace {bulk_move_dto.target_workspace_id}: {e}"
+                )
+
+        # 3. Process loose media items and source assets via copy + delete
+        copied_items = []
         deleted_count = 0
-        for ws_id, ws_items in items_by_source_ws.items():
-            delete_dto = BulkDeleteDto(
-                items=ws_items,
-                workspace_id=ws_id,
+        if loose_items:
+            copy_dto = BulkCopyDto(
+                items=[
+                    BulkCopyItemDto(id=item.id, type=item.type)
+                    for item in loose_items
+                ],
+                target_workspace_id=bulk_move_dto.target_workspace_id,
             )
-            delete_result = await self.bulk_delete(delete_dto, current_user)
-            deleted_count += delete_result.get("deleted_count", 0)
+            copy_result = await self.bulk_copy(copy_dto, current_user)
+            copied_items = copy_result.get("copied_items", [])
 
+            items_by_source_ws: dict[int, list[BulkDeleteItemDto]] = (
+                defaultdict(list)
+            )
+            for item in copied_items:
+                items_by_source_ws[item["source_workspace_id"]].append(
+                    BulkDeleteItemDto(id=item["id"], type=item["type"])
+                )
+
+            for ws_id, ws_items in items_by_source_ws.items():
+                delete_dto = BulkDeleteDto(
+                    items=ws_items,
+                    workspace_id=ws_id,
+                )
+                delete_result = await self.bulk_delete(delete_dto, current_user)
+                deleted_count += delete_result.get("deleted_count", 0)
+
+        total_moved = len(copied_items) + moved_folder_count
         return {
-            "moved_count": len(copied_items),
+            "moved_count": total_moved,
             "copied_count": len(copied_items),
             "deleted_count": deleted_count,
+            "folders_moved": moved_folder_count,
         }

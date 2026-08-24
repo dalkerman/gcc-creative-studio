@@ -317,3 +317,68 @@ class FolderRepository(BaseRepository[Folder, FolderModel]):
         result = await self.db.execute(stmt)
         await self.db.commit()
         return result.rowcount
+
+    async def move_folder_tree_to_workspace(
+        self,
+        folder_id: int,
+        target_workspace_id: int,
+    ) -> dict[str, int]:
+        """Move a folder, all its descendant subfolders, and all contained media items
+
+        and source assets to a target workspace. The root folder is moved to the
+        top-level (parent_id=None) of the target workspace, while internal hierarchy
+        is preserved.
+        """
+        descendant_ids = await self.get_descendant_ids(folder_id)
+        all_folder_ids = [folder_id] + descendant_ids
+
+        # 1. Update root folder: set new workspace_id and clear parent_id
+        root_stmt = (
+            update(self.model)
+            .where(
+                self.model.id == folder_id,
+                self.model.deleted_at.is_(None),
+            )
+            .values(workspace_id=target_workspace_id, parent_id=None)
+        )
+        await self.db.execute(root_stmt)
+
+        # 2. Update descendant folders: set new workspace_id (keep existing parent_id)
+        if descendant_ids:
+            desc_stmt = (
+                update(self.model)
+                .where(
+                    self.model.id.in_(descendant_ids),
+                    self.model.deleted_at.is_(None),
+                )
+                .values(workspace_id=target_workspace_id)
+            )
+            await self.db.execute(desc_stmt)
+
+        # 3. Update media items belonging to any folder in the tree
+        media_stmt = (
+            update(MediaItem)
+            .where(
+                MediaItem.folder_id.in_(all_folder_ids),
+            )
+            .values(workspace_id=target_workspace_id)
+        )
+        media_result = await self.db.execute(media_stmt)
+
+        # 4. Update source assets belonging to any folder in the tree
+        asset_stmt = (
+            update(SourceAsset)
+            .where(
+                SourceAsset.folder_id.in_(all_folder_ids),
+            )
+            .values(workspace_id=target_workspace_id)
+        )
+        asset_result = await self.db.execute(asset_stmt)
+
+        await self.db.commit()
+
+        return {
+            "folders_moved": len(all_folder_ids),
+            "media_items_moved": media_result.rowcount,
+            "source_assets_moved": asset_result.rowcount,
+        }

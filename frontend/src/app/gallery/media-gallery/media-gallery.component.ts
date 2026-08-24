@@ -1183,14 +1183,36 @@ export class MediaGalleryComponent implements OnInit, OnDestroy, AfterViewInit {
               },
             });
         } else if (result.destinationWorkspaceId !== undefined) {
-          // TODO: Handle moving to another workspace.
-          this.snackBar.open(
-            'Moving to another workspace not yet supported',
-            'Close',
-            {
-              duration: 3000,
-            },
-          );
+          this.galleryService
+            .bulkMove(
+              [{id: folder.id, type: 'folder'}],
+              result.destinationWorkspaceId,
+            )
+            .subscribe({
+              next: () => {
+                this.snackBar.open(
+                  `Folder "${folder.name}" moved successfully`,
+                  'Close',
+                  {
+                    duration: 3000,
+                  },
+                );
+                this.loadFolders();
+                if (this.currentFolderId === folder.id) {
+                  this.navigateToBreadcrumb(null);
+                }
+              },
+              error: err => {
+                console.error('Error moving folder to workspace:', err);
+                this.snackBar.open(
+                  'Failed to move folder to workspace',
+                  'Close',
+                  {
+                    duration: 3000,
+                  },
+                );
+              },
+            });
         }
       });
   }

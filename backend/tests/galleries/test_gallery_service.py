@@ -51,6 +51,7 @@ def fixture_service():
     mock_imagen_service = AsyncMock()
     mock_gcs_service = MagicMock()
     mock_tags_repo = AsyncMock()
+    mock_folder_repo = AsyncMock()
 
     service = GalleryService(
         media_repo=mock_media_repo,
@@ -63,6 +64,7 @@ def fixture_service():
         imagen_service=mock_imagen_service,
         gcs_service=mock_gcs_service,
         tags_repo=mock_tags_repo,
+        folder_repo=mock_folder_repo,
     )
 
     # Attach mocks for ease of use in tests
@@ -75,6 +77,7 @@ def fixture_service():
     service.mock_workspace_auth = mock_workspace_auth
     service.mock_gcs_service = mock_gcs_service
     service.mock_tags_repo = mock_tags_repo
+    service.mock_folder_repo = mock_folder_repo
 
     return service
 
@@ -537,6 +540,53 @@ async def test_bulk_move_success(service):
     service.mock_source_asset_repo.create.assert_called_once()
     service.mock_source_asset_repo.soft_delete.assert_called_once_with(
         5, deleted_by=1
+    )
+
+
+@pytest.mark.anyio
+async def test_bulk_move_folder_success(service):
+    from pydantic import BaseModel
+
+    from src.galleries.dto.bulk_move_dto import BulkMoveDto, BulkMoveItemDto
+
+    class DummyFolder(BaseModel):
+        id: int
+        workspace_id: int
+        name: str
+
+    bulk_dto = BulkMoveDto(
+        target_workspace_id=88,
+        items=[
+            BulkMoveItemDto(id=10, type="folder"),
+        ],
+    )
+    current_user = UserModel(
+        id=1,
+        email="user@test.com",
+        name="User",
+        roles=[UserRoleEnum.USER],
+    )
+
+    mock_folder = DummyFolder(
+        id=10,
+        workspace_id=99,
+        name="Project Assets",
+    )
+    service.mock_folder_repo.get_folder_by_id.return_value = mock_folder
+    service.mock_folder_repo.move_folder_tree_to_workspace.return_value = {
+        "folders_moved": 3,
+        "media_items_moved": 5,
+        "source_assets_moved": 2,
+    }
+
+    result = await service.bulk_move(bulk_dto, current_user)
+
+    assert result["moved_count"] == 1
+    assert result["folders_moved"] == 1
+    service.mock_folder_repo.get_folder_by_id.assert_called_once_with(10)
+    service.mock_folder_repo.move_folder_tree_to_workspace.assert_called_once_with(
+        folder_id=10,
+        target_workspace_id=88,
     )
 
 
