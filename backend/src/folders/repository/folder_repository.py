@@ -12,8 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Repository for folder database operations."""
-
+import re
 from datetime import datetime, timezone
 from fastapi import Depends
 from sqlalchemy import func, select, update, text
@@ -31,11 +30,97 @@ from src.folders.schema.folder_model import Folder, FolderModel
 from src.source_assets.schema.source_asset_model import SourceAsset
 
 
+def generate_disambiguated_name(
+    base_name: str, existing_names_lower: set[str]
+) -> str:
+    """Generates a non-colliding name by appending ' (N)'."""
+    base = base_name.strip()
+    if base.lower() not in existing_names_lower:
+        return base
+
+    match = re.search(r"^(.*?)\s+\((\d+)\)$", base)
+    if match:
+        root_name = match.group(1).strip()
+        current_num = int(match.group(2))
+    else:
+        root_name = base
+        current_num = 0
+
+    current_idx = current_num + 1 if current_num > 0 else 1
+    while True:
+        candidate = f"{root_name} ({current_idx})"
+        if candidate.lower() not in existing_names_lower:
+            return candidate
+        current_idx += 1
+
+
 class FolderRepository(BaseRepository[Folder, FolderModel]):
     """Handles database queries for folders and folder hierarchies."""
 
     def __init__(self, db: AsyncSession = Depends(get_db)):
         super().__init__(model=Folder, schema=FolderModel, db=db)
+
+    async def is_folder_name_taken(
+        self,
+        workspace_id: int,
+        parent_id: int | None,
+        name: str,
+        exclude_folder_id: int | None = None,
+    ) -> bool:
+        """Check if an active folder with the given name exists under the specified parent."""
+        clean_name = name.strip()
+        query = select(self.model.id).where(
+            self.model.workspace_id == workspace_id,
+            func.lower(func.trim(self.model.name)) == clean_name.lower(),
+            self.model.deleted_at.is_(None),
+        )
+        if parent_id is None:
+            query = query.where(self.model.parent_id.is_(None))
+        else:
+            query = query.where(self.model.parent_id == parent_id)
+
+        if exclude_folder_id is not None:
+            query = query.where(self.model.id != exclude_folder_id)
+
+        result = await self.db.execute(query)
+        return result.first() is not None
+
+    async def get_existing_folder_names(
+        self,
+        workspace_id: int,
+        parent_id: int | None,
+        exclude_folder_id: int | None = None,
+    ) -> set[str]:
+        """Fetch set of lowercase trimmed names of all active sibling folders."""
+        query = select(func.lower(func.trim(self.model.name))).where(
+            self.model.workspace_id == workspace_id,
+            self.model.deleted_at.is_(None),
+        )
+        if parent_id is None:
+            query = query.where(self.model.parent_id.is_(None))
+        else:
+            query = query.where(self.model.parent_id == parent_id)
+
+        if exclude_folder_id is not None:
+            query = query.where(self.model.id != exclude_folder_id)
+
+        result = await self.db.execute(query)
+        return {row[0] for row in result.fetchall()}
+
+    async def get_unique_folder_name(
+        self,
+        workspace_id: int,
+        parent_id: int | None,
+        base_name: str,
+        exclude_folder_id: int | None = None,
+    ) -> str:
+        """Calculates a unique disambiguated name for a folder within its destination."""
+        existing_names = await self.get_existing_folder_names(
+            workspace_id=workspace_id,
+            parent_id=parent_id,
+            exclude_folder_id=exclude_folder_id,
+        )
+        return generate_disambiguated_name(base_name, existing_names)
 
     async def get_folder_by_id(
         self, folder_id: int, include_deleted: bool = False
@@ -302,29 +387,62 @@ class FolderRepository(BaseRepository[Folder, FolderModel]):
         workspace_id: int,
         destination_folder_id: int | None,
     ) -> int:
-        """Move multiple folders to a destination parent folder."""
+        """Move multiple folders to a destination parent folder with automatic name disambiguation."""
         if not folder_ids:
             return 0
-        stmt = (
-            update(Folder)
-            .where(
-                Folder.id.in_(folder_ids),
-                Folder.workspace_id == workspace_id,
-                Folder.deleted_at.is_(None),
-            )
-            .values(parent_id=destination_folder_id)
+
+        # Query all folders to move
+        query = select(self.model).where(
+            self.model.id.in_(folder_ids),
+            self.model.workspace_id == workspace_id,
+            self.model.deleted_at.is_(None),
         )
-        result = await self.db.execute(stmt)
+        result = await self.db.execute(query)
+        folders = result.scalars().all()
+        if not folders:
+            return 0
+
+        # Fetch existing sibling names in destination
+        existing_names = await self.get_existing_folder_names(
+            workspace_id=workspace_id,
+            parent_id=destination_folder_id,
+        )
+        for f in folders:
+            if f.parent_id == destination_folder_id:
+                existing_names.discard(f.name.strip().lower())
+
+        moved_count = 0
+        for f in folders:
+            if f.parent_id != destination_folder_id:
+                new_name = generate_disambiguated_name(f.name, existing_names)
+                f.name = new_name
+                f.parent_id = destination_folder_id
+                existing_names.add(new_name.strip().lower())
+                moved_count += 1
+
         await self.db.commit()
-        return result.rowcount
+        return moved_count
 
     async def move_folder_to_workspace(
         self, folder_id: int, target_workspace_id: int
     ) -> dict[str, int]:
-        """Moves a folder hierarchy and all contained media items and source assets to a target workspace."""
+        """Moves a folder hierarchy and all contained media items and source assets to a target workspace with root name disambiguation."""
+        root_folder = await self.get_folder_by_id(folder_id)
+        if not root_folder:
+            return {"folders_moved": 0, "media_moved": 0, "assets_moved": 0}
+
         descendant_ids = await self.get_descendant_ids(folder_id)
         if not descendant_ids:
             return {"folders_moved": 0, "media_moved": 0, "assets_moved": 0}
+
+        # Check for name collision at root level of target workspace
+        existing_root_names = await self.get_existing_folder_names(
+            workspace_id=target_workspace_id,
+            parent_id=None,
+        )
+        disambiguated_name = generate_disambiguated_name(
+            root_folder.name, existing_root_names
+        )
 
         # 1. Update media items belonging to any folder in the subtree
         media_stmt = (
@@ -355,14 +473,18 @@ class FolderRepository(BaseRepository[Folder, FolderModel]):
             )
             await self.db.execute(child_folders_stmt)
 
-        # 4. Update the root folder being moved: set workspace_id and reset parent_id to None
+        # 4. Update the root folder being moved: set workspace_id, reset parent_id to None, and apply disambiguated name
         root_folder_stmt = (
             update(Folder)
             .where(
                 Folder.id == folder_id,
                 Folder.deleted_at.is_(None),
             )
-            .values(workspace_id=target_workspace_id, parent_id=None)
+            .values(
+                workspace_id=target_workspace_id,
+                parent_id=None,
+                name=disambiguated_name,
+            )
         )
         await self.db.execute(root_folder_stmt)
 

@@ -22,6 +22,7 @@ from sqlalchemy import (
     Index,
     String,
     func,
+    text,
 )
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -79,6 +80,23 @@ class Folder(Base):
             postgresql_where=deleted_at.is_(None),
         ),
         Index("idx_folders_workspace_id", "workspace_id"),
+        Index(
+            "uq_folders_workspace_parent_name_active",
+            "workspace_id",
+            "parent_id",
+            func.lower(func.trim(name)),
+            unique=True,
+            postgresql_where=text(
+                "parent_id IS NOT NULL AND deleted_at IS NULL"
+            ),
+        ),
+        Index(
+            "uq_folders_workspace_root_name_active",
+            "workspace_id",
+            func.lower(func.trim(name)),
+            unique=True,
+            postgresql_where=text("parent_id IS NULL AND deleted_at IS NULL"),
+        ),
     )
 
 

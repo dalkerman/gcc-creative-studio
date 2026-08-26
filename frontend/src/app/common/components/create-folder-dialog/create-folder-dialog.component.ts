@@ -22,6 +22,7 @@ export interface CreateFolderDialogData {
   workspaceId: number;
   parentId?: number | null;
   folder?: Folder; // If provided, acts as Rename/Edit mode
+  existingFolderNames?: string[];
 }
 
 @Component({
@@ -58,8 +59,26 @@ export class CreateFolderDialogComponent implements OnInit {
     }
   }
 
+  get isDuplicateName(): boolean {
+    const trimmed = this.folderName.trim().toLowerCase();
+    if (!trimmed) return false;
+    if (
+      this.isEditMode &&
+      this.data.folder &&
+      this.data.folder.name.trim().toLowerCase() === trimmed
+    ) {
+      return false;
+    }
+    const existing = this.data.existingFolderNames || [];
+    return existing.some(name => name.trim().toLowerCase() === trimmed);
+  }
+
+  get isValid(): boolean {
+    return this.folderName.trim().length > 0 && !this.isDuplicateName;
+  }
+
   save(): void {
-    if (!this.folderName.trim()) {
+    if (!this.isValid) {
       return;
     }
     this.dialogRef.close({

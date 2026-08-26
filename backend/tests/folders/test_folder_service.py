@@ -36,6 +36,7 @@ def fixture_mock_folder_repo():
     """Provides a mocked FolderRepository."""
     mock = AsyncMock()
     mock.db = AsyncMock()
+    mock.is_folder_name_taken.return_value = False
     return mock
 
 
@@ -104,6 +105,35 @@ class TestCreateFolder:
         result = await folder_service.create_folder(dto, sample_user)
         assert result.id == 101
         assert result.parent_id == 5
+
+    @pytest.mark.anyio
+    async def test_create_folder_duplicate_conflict(
+        self, folder_service, mock_folder_repo, sample_user
+    ):
+        dto = FolderCreateDto(
+            name="Existing Folder",
+            workspace_id=1,
+            parent_id=None,
+        )
+        mock_folder_repo.is_folder_name_taken.return_value = True
+
+        with pytest.raises(HTTPException) as exc_info:
+            await folder_service.create_folder(dto, sample_user)
+        assert exc_info.value.status_code == status.HTTP_409_CONFLICT
+        assert "already exists" in exc_info.value.detail
+
+    @pytest.mark.anyio
+    async def test_create_folder_empty_name_error(
+        self, folder_service, sample_user
+    ):
+        dto = FolderCreateDto(
+            name="   ",
+            workspace_id=1,
+            parent_id=None,
+        )
+        with pytest.raises(HTTPException) as exc_info:
+            await folder_service.create_folder(dto, sample_user)
+        assert exc_info.value.status_code == status.HTTP_400_BAD_REQUEST
 
     @pytest.mark.anyio
     async def test_create_subfolder_parent_not_found(
@@ -213,6 +243,7 @@ class TestUpdateFolder:
             id=1, workspace_id=1, user_email="a@b.com", name="Old Name"
         )
         mock_folder_repo.get_folder_by_id.return_value = folder
+        mock_folder_repo.is_folder_name_taken.return_value = False
         mock_folder_repo.list_by_parent.return_value = [
             FolderResponseDto(
                 id=1,
@@ -227,6 +258,75 @@ class TestUpdateFolder:
         result = await folder_service.update_folder(1, dto, sample_user)
         assert folder.name == "New Name"
         assert result.name == "New Name"
+
+    @pytest.mark.anyio
+    async def test_update_name_conflict_error(
+        self, folder_service, mock_folder_repo, sample_user
+    ):
+        folder = Folder(
+            id=1, workspace_id=1, user_email="a@b.com", name="Old Name"
+        )
+        mock_folder_repo.get_folder_by_id.return_value = folder
+        mock_folder_repo.is_folder_name_taken.return_value = True
+
+        dto = FolderUpdateDto(name="Existing Name")
+        with pytest.raises(HTTPException) as exc_info:
+            await folder_service.update_folder(1, dto, sample_user)
+        assert exc_info.value.status_code == status.HTTP_409_CONFLICT
+        assert "already exists" in exc_info.value.detail
+
+    @pytest.mark.anyio
+    async def test_update_name_empty_error(
+        self, folder_service, mock_folder_repo, sample_user
+    ):
+        folder = Folder(
+            id=1, workspace_id=1, user_email="a@b.com", name="Old Name"
+        )
+        mock_folder_repo.get_folder_by_id.return_value = folder
+
+        dto = FolderUpdateDto(name="   ")
+        with pytest.raises(HTTPException) as exc_info:
+            await folder_service.update_folder(1, dto, sample_user)
+        assert exc_info.value.status_code == status.HTTP_400_BAD_REQUEST
+
+    @pytest.mark.anyio
+    async def test_update_folder_move_auto_disambiguation(
+        self, folder_service, mock_folder_repo, sample_user
+    ):
+        folder = Folder(
+            id=1,
+            workspace_id=1,
+            user_email="a@b.com",
+            name="Colliding",
+            parent_id=None,
+        )
+        target_parent = Folder(
+            id=5,
+            workspace_id=1,
+            user_email="a@b.com",
+            name="TargetParent",
+            parent_id=None,
+        )
+        mock_folder_repo.get_folder_by_id.side_effect = lambda fid: (
+            folder if fid == 1 else target_parent
+        )
+        mock_folder_repo.get_descendant_ids.return_value = []
+        mock_folder_repo.get_unique_folder_name.return_value = "Colliding (1)"
+        mock_folder_repo.list_by_parent.return_value = [
+            FolderResponseDto(
+                id=1,
+                workspace_id=1,
+                user_email="a@b.com",
+                name="Colliding (1)",
+                parent_id=5,
+            )
+        ]
+
+        dto = FolderUpdateDto(parent_id=5)
+        result = await folder_service.update_folder(1, dto, sample_user)
+        assert folder.parent_id == 5
+        assert folder.name == "Colliding (1)"
+        assert result.name == "Colliding (1)"
 
     @pytest.mark.anyio
     async def test_update_parent_cycle_error(

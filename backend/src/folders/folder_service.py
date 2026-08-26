@@ -16,6 +16,7 @@
 
 import logging
 from fastapi import Depends, HTTPException, status
+from sqlalchemy.exc import IntegrityError
 
 from src.folders.dto.folder_dto import (
     FolderBreadcrumbDto,
@@ -41,7 +42,14 @@ class FolderService:
     async def create_folder(
         self, dto: FolderCreateDto, user: UserModel
     ) -> FolderResponseDto:
-        """Creates a new folder after validating parent folder if specified."""
+        """Creates a new folder after validating parent folder and name uniqueness."""
+        name = dto.name.strip()
+        if not name:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Folder name cannot be empty.",
+            )
+
         if dto.parent_id is not None:
             parent = await self.folder_repo.get_folder_by_id(dto.parent_id)
             if not parent or parent.workspace_id != dto.workspace_id:
@@ -50,17 +58,34 @@ class FolderService:
                     detail="Parent folder not found in this workspace.",
                 )
 
+        if await self.folder_repo.is_folder_name_taken(
+            workspace_id=dto.workspace_id,
+            parent_id=dto.parent_id,
+            name=name,
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"A folder named '{name}' already exists in this location.",
+            )
+
         folder = Folder(
             workspace_id=dto.workspace_id,
             user_id=user.id,
             user_email=user.email,
-            name=dto.name.strip(),
+            name=name,
             parent_id=dto.parent_id,
             color=dto.color,
         )
-        self.folder_repo.db.add(folder)
-        await self.folder_repo.db.commit()
-        await self.folder_repo.db.refresh(folder)
+        try:
+            self.folder_repo.db.add(folder)
+            await self.folder_repo.db.commit()
+            await self.folder_repo.db.refresh(folder)
+        except IntegrityError as e:
+            await self.folder_repo.db.rollback()
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"A folder named '{name}' already exists in this location.",
+            ) from e
 
         return FolderResponseDto(
             id=folder.id,
@@ -136,7 +161,7 @@ class FolderService:
     async def update_folder(
         self, folder_id: int, dto: FolderUpdateDto, user: UserModel
     ) -> FolderResponseDto:
-        """Updates a folder with cycle check validation for move operations."""
+        """Updates a folder name, color, or parent hierarchy with collision checks and auto-disambiguation."""
         folder = await self.folder_repo.get_folder_by_id(folder_id)
         if not folder:
             raise HTTPException(
@@ -144,11 +169,8 @@ class FolderService:
                 detail=f"Folder with ID {folder_id} not found.",
             )
 
-        if dto.name is not None:
-            folder.name = dto.name.strip()
-
-        if dto.color is not None:
-            folder.color = dto.color
+        is_moving = False
+        new_parent_id = folder.parent_id
 
         # Handle moving folder to a new parent
         if dto.parent_id is not None or "parent_id" in dto.model_fields_set:
@@ -177,10 +199,56 @@ class FolderService:
                         detail="Cannot move a folder into one of its own subfolders.",
                     )
 
-            folder.parent_id = new_parent_id
+            if new_parent_id != folder.parent_id:
+                is_moving = True
+                folder.parent_id = new_parent_id
 
-        await self.folder_repo.db.commit()
-        await self.folder_repo.db.refresh(folder)
+        target_name = dto.name.strip() if dto.name is not None else folder.name
+        if not target_name:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Folder name cannot be empty.",
+            )
+
+        if is_moving:
+            # Auto-disambiguate on move if colliding in target location
+            unique_name = await self.folder_repo.get_unique_folder_name(
+                workspace_id=folder.workspace_id,
+                parent_id=new_parent_id,
+                base_name=target_name,
+                exclude_folder_id=folder.id,
+            )
+            folder.name = unique_name
+        else:
+            # Standard Rename (within same parent)
+            if (
+                dto.name is not None
+                and target_name.lower() != folder.name.lower()
+            ):
+                if await self.folder_repo.is_folder_name_taken(
+                    workspace_id=folder.workspace_id,
+                    parent_id=folder.parent_id,
+                    name=target_name,
+                    exclude_folder_id=folder.id,
+                ):
+                    raise HTTPException(
+                        status_code=status.HTTP_409_CONFLICT,
+                        detail=f"A folder named '{target_name}' already exists in this location.",
+                    )
+                folder.name = target_name
+
+        if dto.color is not None:
+            folder.color = dto.color
+
+        try:
+            await self.folder_repo.db.commit()
+            await self.folder_repo.db.refresh(folder)
+        except IntegrityError as e:
+            await self.folder_repo.db.rollback()
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"A folder named '{folder.name}' already exists in this location.",
+            ) from e
 
         return await self.get_folder_by_id(folder.id)
 

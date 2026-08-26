@@ -1014,6 +1014,7 @@ export class MediaGalleryComponent implements OnInit, OnDestroy, AfterViewInit {
       data: {
         workspaceId,
         parentId: this.currentFolderId,
+        existingFolderNames: this.folders.map(f => f.name),
       },
     });
 
@@ -1035,8 +1036,9 @@ export class MediaGalleryComponent implements OnInit, OnDestroy, AfterViewInit {
             },
             error: err => {
               console.error('Error creating folder:', err);
-              this.snackBar.open('Failed to create folder', 'Close', {
-                duration: 3000,
+              const message = err.error?.detail || 'Failed to create folder';
+              this.snackBar.open(message, 'Close', {
+                duration: 4000,
               });
             },
           });
@@ -1053,6 +1055,7 @@ export class MediaGalleryComponent implements OnInit, OnDestroy, AfterViewInit {
         workspaceId,
         parentId: folder.parentId,
         folder,
+        existingFolderNames: this.folders.map(f => f.name),
       },
     });
 
@@ -1075,8 +1078,9 @@ export class MediaGalleryComponent implements OnInit, OnDestroy, AfterViewInit {
             },
             error: err => {
               console.error('Error updating folder:', err);
-              this.snackBar.open('Failed to rename folder', 'Close', {
-                duration: 3000,
+              const message = err.error?.detail || 'Failed to rename folder';
+              this.snackBar.open(message, 'Close', {
+                duration: 4000,
               });
             },
           });

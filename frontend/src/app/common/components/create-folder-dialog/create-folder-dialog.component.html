@@ -35,11 +35,15 @@
       <input
         type="text"
         class="folder-input"
+        [class.has-error]="isDuplicateName"
         placeholder="e.g. Summer Campaign 2026"
         [(ngModel)]="folderName"
-        (keyup.enter)="save()"
+        (keyup.enter)="isValid && save()"
         autofocus
       />
+      <span *ngIf="isDuplicateName" class="error-message">
+        A folder with this name already exists in this location.
+      </span>
     </div>
 
     <div class="form-group">
@@ -66,7 +70,7 @@
     <studio-button
       variant="primary"
       size="medium"
-      [disabled]="!folderName.trim()"
+      [disabled]="!isValid"
       (click)="save()"
     >
       {{ isEditMode ? 'Save Changes' : 'Create Folder' }}

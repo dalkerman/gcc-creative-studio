@@ -14,10 +14,14 @@
 
 """Tests for Folder Repository."""
 
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 import pytest
 
-from src.folders.repository.folder_repository import FolderRepository
+from src.folders.repository.folder_repository import (
+    FolderRepository,
+    generate_disambiguated_name,
+)
 from src.folders.schema.folder_model import Folder
 
 
@@ -34,8 +38,69 @@ def fixture_folder_repo(mock_db):
     return FolderRepository(db=mock_db)
 
 
+class TestDisambiguationHelper:
+    """Unit tests for generate_disambiguated_name helper."""
+
+    def test_no_collision(self):
+        result = generate_disambiguated_name("Campaigns", {"other", "reports"})
+        assert result == "Campaigns"
+
+    def test_first_collision_adds_1(self):
+        result = generate_disambiguated_name("Campaigns", {"campaigns"})
+        assert result == "Campaigns (1)"
+
+    def test_second_collision_adds_2(self):
+        result = generate_disambiguated_name(
+            "Campaigns", {"campaigns", "campaigns (1)"}
+        )
+        assert result == "Campaigns (2)"
+
+    def test_existing_numbered_suffix_increments(self):
+        result = generate_disambiguated_name("Campaigns (1)", {"campaigns (1)"})
+        assert result == "Campaigns (2)"
+
+    def test_higher_numbered_suffix_increments(self):
+        result = generate_disambiguated_name("Campaigns (2)", {"campaigns (2)"})
+        assert result == "Campaigns (3)"
+
+
 class TestFolderRepository:
     """Tests for FolderRepository methods."""
+
+    @pytest.mark.anyio
+    async def test_is_folder_name_taken(self, folder_repo, mock_db):
+        mock_result = MagicMock()
+        mock_result.first.return_value = (1,)
+        mock_db.execute.return_value = mock_result
+
+        taken = await folder_repo.is_folder_name_taken(
+            workspace_id=1,
+            parent_id=None,
+            name="  Marketing  ",
+        )
+        assert taken is True
+
+    @pytest.mark.anyio
+    async def test_get_existing_folder_names(self, folder_repo, mock_db):
+        mock_result = MagicMock()
+        mock_result.fetchall.return_value = [("folder a",), ("folder b",)]
+        mock_db.execute.return_value = mock_result
+
+        names = await folder_repo.get_existing_folder_names(
+            workspace_id=1, parent_id=5
+        )
+        assert names == {"folder a", "folder b"}
+
+    @pytest.mark.anyio
+    async def test_get_unique_folder_name(self, folder_repo, mock_db):
+        mock_result = MagicMock()
+        mock_result.fetchall.return_value = [("assets",)]
+        mock_db.execute.return_value = mock_result
+
+        unique_name = await folder_repo.get_unique_folder_name(
+            workspace_id=1, parent_id=None, base_name="Assets"
+        )
+        assert unique_name == "Assets (1)"
 
     @pytest.mark.anyio
     async def test_get_folder_by_id(self, folder_repo, mock_db):
@@ -75,8 +140,6 @@ class TestFolderRepository:
 
     @pytest.mark.anyio
     async def test_get_breadcrumbs(self, folder_repo, mock_db):
-        from types import SimpleNamespace
-
         mock_row1 = SimpleNamespace(id=1, name="Root", parent_id=None)
         mock_row2 = SimpleNamespace(id=2, name="Child", parent_id=1)
         mock_result = MagicMock()
@@ -159,30 +222,61 @@ class TestFolderRepository:
         mock_db.commit.assert_called_once()
 
     @pytest.mark.anyio
-    async def test_move_folders(self, folder_repo, mock_db):
-        mock_result = MagicMock(rowcount=1)
-        mock_db.execute.return_value = mock_result
+    async def test_move_folders_disambiguation(self, folder_repo, mock_db):
+        f5 = Folder(
+            id=5,
+            workspace_id=1,
+            user_email="a@b.com",
+            name="Colliding",
+            parent_id=None,
+        )
+        mock_folders_res = MagicMock()
+        mock_folders_res.scalars.return_value.all.return_value = [f5]
+
+        mock_existing_names_res = MagicMock()
+        mock_existing_names_res.fetchall.return_value = [("colliding",)]
+
+        mock_db.execute.side_effect = [
+            mock_folders_res,
+            mock_existing_names_res,
+        ]
 
         count = await folder_repo.move_folders(
             [5], workspace_id=1, destination_folder_id=3
         )
         assert count == 1
+        assert f5.parent_id == 3
+        assert f5.name == "Colliding (1)"
         mock_db.commit.assert_called_once()
 
     @pytest.mark.anyio
     async def test_move_folder_to_workspace(self, folder_repo, mock_db):
-        # Mock get_descendant_ids to return root (1) and child (2)
+        root_folder = Folder(
+            id=1,
+            workspace_id=1,
+            user_email="a@b.com",
+            name="ExistingRoot",
+            parent_id=None,
+        )
+        mock_get_root = MagicMock()
+        mock_get_root.scalars.return_value.first.return_value = root_folder
+
         mock_row1 = MagicMock(id=1)
         mock_row2 = MagicMock(id=2)
         mock_desc_res = MagicMock()
         mock_desc_res.fetchall.return_value = [mock_row1, mock_row2]
+
+        mock_existing_root_res = MagicMock()
+        mock_existing_root_res.fetchall.return_value = [("existingroot",)]
 
         mock_media_res = MagicMock(rowcount=3)
         mock_asset_res = MagicMock(rowcount=2)
         mock_other_res = MagicMock(rowcount=1)
 
         mock_db.execute.side_effect = [
+            mock_get_root,
             mock_desc_res,
+            mock_existing_root_res,
             mock_media_res,
             mock_asset_res,
             mock_other_res,
@@ -199,9 +293,9 @@ class TestFolderRepository:
 
     @pytest.mark.anyio
     async def test_move_folder_to_workspace_empty(self, folder_repo, mock_db):
-        mock_desc_res = MagicMock()
-        mock_desc_res.fetchall.return_value = []
-        mock_db.execute.return_value = mock_desc_res
+        mock_get_root = MagicMock()
+        mock_get_root.scalars.return_value.first.return_value = None
+        mock_db.execute.return_value = mock_get_root
 
         result = await folder_repo.move_folder_to_workspace(
             folder_id=999, target_workspace_id=99
