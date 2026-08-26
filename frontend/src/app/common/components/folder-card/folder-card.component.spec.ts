@@ -120,4 +120,13 @@ describe('FolderCardComponent', () => {
     component.onDrop(mockEvent);
     expect(component.itemDropped.emit).not.toHaveBeenCalled();
   });
+
+  it('should emit copyRequested when onCopy is called', () => {
+    spyOn(component.copyRequested, 'emit');
+    component.menuTrigger = {closeMenu: jasmine.createSpy('closeMenu')} as any;
+    const event = new MouseEvent('click');
+    component.onCopy(event);
+    expect(component.menuTrigger.closeMenu).toHaveBeenCalled();
+    expect(component.copyRequested.emit).toHaveBeenCalledWith(component.folder);
+  });
 });

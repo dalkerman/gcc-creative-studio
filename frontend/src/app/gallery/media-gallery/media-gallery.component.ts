@@ -1117,6 +1117,49 @@ export class MediaGalleryComponent implements OnInit, OnDestroy, AfterViewInit {
     });
   }
 
+  openCopyFolderDialog(folder: Folder): void {
+    const workspaceId = this.workspaceStateService.getActiveWorkspaceId();
+    if (!workspaceId) return;
+
+    const dialogRef = this.dialog.open(CopyToWorkspaceDialogComponent, {
+      width: '450px',
+      data: {
+        itemCount: 1,
+        title: 'Copy Folder',
+        subtitle: `Select the target workspace for folder "${folder.name}" and its contents`,
+      },
+    });
+
+    dialogRef.afterClosed().subscribe((targetWorkspaceId: number | null) => {
+      if (targetWorkspaceId) {
+        this.executeCopyFolderToWorkspace(folder, targetWorkspaceId);
+      }
+    });
+  }
+
+  private executeCopyFolderToWorkspace(
+    folder: Folder,
+    targetWorkspaceId: number,
+  ): void {
+    this.isCopying = true;
+    const itemsToCopy = [{id: folder.id, type: 'folder'}];
+    this.galleryService.bulkCopy(itemsToCopy, targetWorkspaceId).subscribe({
+      next: () => {
+        this.snackBar.open(
+          `Folder "${folder.name}" copied successfully`,
+          'Close',
+          {duration: 3000},
+        );
+        this.isCopying = false;
+      },
+      error: err => {
+        console.error('Error copying folder to workspace:', err);
+        this.snackBar.open('Failed to copy folder', 'Close', {duration: 3000});
+        this.isCopying = false;
+      },
+    });
+  }
+
   openMoveFolderDialog(folder: Folder): void {
     const workspaceId = this.workspaceStateService.getActiveWorkspaceId();
     if (!workspaceId) return;

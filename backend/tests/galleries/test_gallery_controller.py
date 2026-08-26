@@ -156,6 +156,18 @@ def test_bulk_copy_items_success(client, mock_service):
     mock_service.bulk_copy.assert_called_once()
 
 
+def test_bulk_copy_folders_success(client, mock_service):
+    mock_service.bulk_copy.return_value = {"copied_count": 1}
+    payload = {
+        "items": [{"id": 10, "type": "folder"}],
+        "target_workspace_id": 2,
+    }
+    response = client.post("/api/gallery/bulk-copy", json=payload)
+    assert response.status_code == 200
+    assert response.json() == {"copied_count": 1}
+    mock_service.bulk_copy.assert_called_once()
+
+
 def test_bulk_move_items_success(client, mock_service):
     mock_service.bulk_move.return_value = {"moved_count": 1}
     payload = {

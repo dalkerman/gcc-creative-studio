@@ -24,10 +24,14 @@
         <mat-icon>content_copy</mat-icon>
       </div>
       <div>
-        <h2 class="dialog-title">Copy Items</h2>
+        <h2 class="dialog-title">{{ data.title || 'Copy Items' }}</h2>
         <p class="dialog-subtitle">
-          Select the target workspace for the {{ data.itemCount }} item{{
-            data.itemCount === 1 ? '' : 's'
+          {{
+            data.subtitle ||
+              ('Select the target workspace for the ' +
+                (data.itemCount || 0) +
+                ' item' +
+                ((data.itemCount || 0) === 1 ? '' : 's'))
           }}
         </p>
       </div>
@@ -99,7 +103,7 @@
       [disabled]="isLoading || !selectedWorkspaceId"
       (click)="confirm()"
     >
-      Copy Items
+      {{ data.title || 'Copy Items' }}
     </studio-button>
   </div>
 </div>

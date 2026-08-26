@@ -406,5 +406,31 @@ describe('MediaGalleryComponent', () => {
         'Target Workspace',
       );
     });
+
+    it('should handle openCopyFolderDialog when destination workspace is chosen', () => {
+      const mockDialogRef = {
+        afterClosed: () => of(88),
+      };
+      spyOn(component.dialog, 'open').and.returnValue(mockDialogRef as any);
+      const executeSpy = spyOn(
+        component as any,
+        'executeCopyFolderToWorkspace',
+      ).and.callThrough();
+      spyOn(galleryService, 'bulkCopy').and.returnValue(of({copied_count: 1}));
+
+      const folder = {
+        id: 10,
+        name: 'Folder 1',
+        workspace_id: 1,
+        parent_id: null,
+      } as any;
+      component.openCopyFolderDialog(folder);
+
+      expect(executeSpy).toHaveBeenCalledWith(folder, 88);
+      expect(galleryService.bulkCopy).toHaveBeenCalledWith(
+        [{id: 10, type: 'folder'}],
+        88,
+      );
+    });
   });
 });

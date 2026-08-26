@@ -152,7 +152,7 @@ async def bulk_copy_items(
     current_user: UserModel = Depends(get_current_user),
     service: GalleryService = Depends(),
 ):
-    """Bulk copy media items and source assets to another workspace."""
+    """Bulk copy media items, source assets, and folders to another workspace."""
     return await service.bulk_copy(
         bulk_copy_dto=bulk_copy_dto,
         current_user=current_user,
@@ -165,7 +165,7 @@ async def bulk_move_items(
     current_user: UserModel = Depends(get_current_user),
     service: GalleryService = Depends(),
 ):
-    """Bulk move media items and source assets to another workspace."""
+    """Bulk move media items, source assets, and folders to another workspace."""
     return await service.bulk_move(
         bulk_move_dto=bulk_move_dto,
         current_user=current_user,

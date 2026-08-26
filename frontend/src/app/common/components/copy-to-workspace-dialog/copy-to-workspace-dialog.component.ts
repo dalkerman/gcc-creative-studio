@@ -22,7 +22,9 @@ import {WorkspaceStateService} from '../../../services/workspace/workspace-state
 import {FlattenedWorkspaceOption} from '../move-to-folder-dialog/move-to-folder-dialog.component';
 
 export interface CopyToWorkspaceDialogData {
-  itemCount: number;
+  itemCount?: number;
+  title?: string;
+  subtitle?: string;
 }
 
 @Component({

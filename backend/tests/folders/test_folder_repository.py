@@ -303,3 +303,122 @@ class TestFolderRepository:
         assert result["folders_moved"] == 0
         assert result["media_moved"] == 0
         assert result["assets_moved"] == 0
+
+    @pytest.mark.anyio
+    async def test_copy_folder_to_workspace(self, folder_repo, mock_db):
+        root_folder = Folder(
+            id=1,
+            workspace_id=1,
+            user_email="a@b.com",
+            name="ExistingRoot",
+            parent_id=None,
+            color="#fff",
+        )
+        mock_get_root = MagicMock()
+        mock_get_root.scalars.return_value.first.return_value = root_folder
+
+        mock_row1 = MagicMock(
+            id=1, name="ExistingRoot", color="#fff", parent_id=None
+        )
+        mock_row2 = MagicMock(id=2, name="Subfolder", color="#fff", parent_id=1)
+        mock_desc_res = MagicMock()
+        mock_desc_res.fetchall.return_value = [mock_row1, mock_row2]
+
+        mock_existing_root_res = MagicMock()
+        mock_existing_root_res.fetchall.return_value = [("existingroot",)]
+
+        mock_media1 = MagicMock(
+            id=10,
+            folder_id=1,
+            user_email="a@b.com",
+            mime_type="image/png",
+            model="imagen",
+            titles=[],
+            descriptions=[],
+            prompt="p",
+            original_prompt="op",
+            rewritten_prompt="rp",
+            num_media=1,
+            generation_time=1.0,
+            error_message=None,
+            thumbnail_uris=[],
+            aspect_ratio="1:1",
+            style=None,
+            lighting=None,
+            color_and_tone=None,
+            composition=None,
+            negative_prompt=None,
+            add_watermark=False,
+            status="completed",
+            source_assets=None,
+            source_media_items=None,
+            gcs_uris=[],
+            original_gcs_uris=[],
+            duration_seconds=None,
+            comment=None,
+            seed=None,
+            critique=None,
+            google_search=None,
+            resolution=None,
+            grounding_metadata=None,
+            audio_analysis=None,
+            voice_name=None,
+            language_code=None,
+            raw_data=None,
+            created_from_template_id=None,
+        )
+        mock_media_res = MagicMock()
+        mock_media_res.scalars.return_value.all.return_value = [mock_media1]
+
+        mock_asset1 = MagicMock(
+            id=20,
+            folder_id=2,
+            gcs_uri="gs://bucket/file.png",
+            original_filename="file.png",
+            titles=[],
+            descriptions=[],
+            mime_type="image/png",
+            aspect_ratio="1:1",
+            file_hash="hash",
+            scope="private",
+            asset_type="generic_image",
+            thumbnail_gcs_uri=None,
+            original_gcs_uri=None,
+            external_url=None,
+        )
+        mock_asset_res = MagicMock()
+        mock_asset_res.scalars.return_value.all.return_value = [mock_asset1]
+
+        mock_db.execute.side_effect = [
+            mock_get_root,
+            mock_desc_res,
+            mock_existing_root_res,
+            mock_media_res,
+            mock_asset_res,
+        ]
+
+        result = await folder_repo.copy_folder_to_workspace(
+            folder_id=1,
+            target_workspace_id=99,
+            user_id=1,
+            user_email="tester@test.com",
+        )
+        assert result["folders_copied"] == 2
+        assert result["media_copied"] == 1
+        assert result["assets_copied"] == 1
+        mock_db.commit.assert_called_once()
+
+    @pytest.mark.anyio
+    async def test_copy_folder_to_workspace_empty(self, folder_repo, mock_db):
+        mock_get_root = MagicMock()
+        mock_get_root.scalars.return_value.first.return_value = None
+        mock_db.execute.return_value = mock_get_root
+
+        result = await folder_repo.copy_folder_to_workspace(
+            folder_id=999,
+            target_workspace_id=99,
+            user_id=1,
+        )
+        assert result["folders_copied"] == 0
+        assert result["media_copied"] == 0
+        assert result["assets_copied"] == 0

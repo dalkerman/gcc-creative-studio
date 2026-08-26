@@ -41,6 +41,7 @@ export class FolderCardComponent {
   @Output() editRequested = new EventEmitter<Folder>();
   @Output() deleteRequested = new EventEmitter<Folder>();
   @Output() moveRequested = new EventEmitter<Folder>();
+  @Output() copyRequested = new EventEmitter<Folder>();
   @Output() selectionToggled = new EventEmitter<{
     folder: Folder;
     event: MouseEvent;
@@ -183,6 +184,12 @@ export class FolderCardComponent {
     event.stopPropagation();
     this.menuTrigger.closeMenu();
     this.editRequested.emit(this.folder);
+  }
+
+  onCopy(event: MouseEvent): void {
+    event.stopPropagation();
+    this.menuTrigger.closeMenu();
+    this.copyRequested.emit(this.folder);
   }
 
   onMove(event: MouseEvent): void {

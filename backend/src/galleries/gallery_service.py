@@ -760,6 +760,25 @@ class GalleryService:
                     await self.source_asset_repo.create(new_asset_data)
                     copied_count += 1
 
+                elif item.type == "folder":
+                    folder = await self.folder_repo.get_folder_by_id(item.id)
+                    if not folder:
+                        continue
+
+                    # Authorize source workspace access
+                    await self.workspace_auth.authorize(
+                        workspace_id=folder.workspace_id,
+                        user=current_user,
+                    )
+
+                    await self.folder_repo.copy_folder_to_workspace(
+                        folder_id=folder.id,
+                        target_workspace_id=bulk_copy_dto.target_workspace_id,
+                        user_id=current_user.id,
+                        user_email=current_user.email,
+                    )
+                    copied_count += 1
+
             except Exception as e:
                 logger.error(f"Error copying {item.type} {item.id}: {e}")
 

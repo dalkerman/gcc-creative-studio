@@ -495,3 +495,173 @@ class FolderRepository(BaseRepository[Folder, FolderModel]):
             "media_moved": media_res.rowcount,
             "assets_moved": asset_res.rowcount,
         }
+
+    async def copy_folder_to_workspace(
+        self,
+        folder_id: int,
+        target_workspace_id: int,
+        user_id: int,
+        user_email: str | None = None,
+    ) -> dict[str, int]:
+        """Copies a folder hierarchy and all contained media items and source assets to a target workspace with root name disambiguation."""
+        root_folder = await self.get_folder_by_id(folder_id)
+        if not root_folder:
+            return {"folders_copied": 0, "media_copied": 0, "assets_copied": 0}
+
+        cte_query = text(
+            """
+            WITH RECURSIVE descendants AS (
+                SELECT id, name, color, parent_id, 0 AS depth
+                FROM folders
+                WHERE id = :folder_id AND deleted_at IS NULL
+                UNION ALL
+                SELECT f.id, f.name, f.color, f.parent_id, d.depth + 1 AS depth
+                FROM folders f
+                JOIN descendants d ON f.parent_id = d.id
+                WHERE f.deleted_at IS NULL
+            )
+            SELECT id, name, color, parent_id, depth FROM descendants ORDER BY depth ASC, id ASC;
+            """
+        )
+        res = await self.db.execute(cte_query, {"folder_id": folder_id})
+        folder_rows = res.fetchall()
+        if not folder_rows:
+            return {"folders_copied": 0, "media_copied": 0, "assets_copied": 0}
+
+        # Check for name collision at root level of target workspace
+        existing_root_names = await self.get_existing_folder_names(
+            workspace_id=target_workspace_id,
+            parent_id=None,
+        )
+        disambiguated_root_name = generate_disambiguated_name(
+            root_folder.name, existing_root_names
+        )
+
+        id_map: dict[int, int] = {}
+        for row in folder_rows:
+            if row.id == folder_id:
+                new_folder = Folder(
+                    workspace_id=target_workspace_id,
+                    user_id=user_id,
+                    user_email=user_email or root_folder.user_email,
+                    name=disambiguated_root_name,
+                    parent_id=None,
+                    color=row.color,
+                )
+            else:
+                new_parent_id = id_map.get(row.parent_id)
+                new_folder = Folder(
+                    workspace_id=target_workspace_id,
+                    user_id=user_id,
+                    user_email=user_email or root_folder.user_email,
+                    name=row.name,
+                    parent_id=new_parent_id,
+                    color=row.color,
+                )
+            self.db.add(new_folder)
+            await self.db.flush()
+            id_map[row.id] = new_folder.id
+
+        old_folder_ids = list(id_map.keys())
+
+        # Copy media items in any of the copied folders
+        media_stmt = select(MediaItem).where(
+            MediaItem.folder_id.in_(old_folder_ids),
+            MediaItem.deleted_at.is_(None),
+        )
+        media_res = await self.db.execute(media_stmt)
+        media_items = media_res.scalars().all()
+
+        media_copied_count = 0
+        for item in media_items:
+            new_media = MediaItem(
+                workspace_id=target_workspace_id,
+                folder_id=id_map[item.folder_id],
+                user_id=user_id,
+                user_email=user_email or item.user_email,
+                mime_type=item.mime_type,
+                model=item.model,
+                titles=list(item.titles) if item.titles else [],
+                descriptions=(
+                    list(item.descriptions) if item.descriptions else []
+                ),
+                prompt=item.prompt,
+                original_prompt=item.original_prompt,
+                rewritten_prompt=item.rewritten_prompt,
+                num_media=item.num_media,
+                generation_time=item.generation_time,
+                error_message=item.error_message,
+                thumbnail_uris=(
+                    list(item.thumbnail_uris) if item.thumbnail_uris else []
+                ),
+                aspect_ratio=item.aspect_ratio,
+                style=item.style,
+                lighting=item.lighting,
+                color_and_tone=item.color_and_tone,
+                composition=item.composition,
+                negative_prompt=item.negative_prompt,
+                add_watermark=item.add_watermark,
+                status=item.status,
+                source_assets=item.source_assets,
+                source_media_items=item.source_media_items,
+                gcs_uris=list(item.gcs_uris) if item.gcs_uris else [],
+                original_gcs_uris=(
+                    list(item.original_gcs_uris)
+                    if item.original_gcs_uris
+                    else []
+                ),
+                duration_seconds=item.duration_seconds,
+                comment=item.comment,
+                seed=item.seed,
+                critique=item.critique,
+                google_search=item.google_search,
+                resolution=item.resolution,
+                grounding_metadata=item.grounding_metadata,
+                audio_analysis=item.audio_analysis,
+                voice_name=item.voice_name,
+                language_code=item.language_code,
+                raw_data=item.raw_data,
+                created_from_template_id=item.created_from_template_id,
+            )
+            self.db.add(new_media)
+            media_copied_count += 1
+
+        # Copy source assets in any of the copied folders
+        asset_stmt = select(SourceAsset).where(
+            SourceAsset.folder_id.in_(old_folder_ids),
+            SourceAsset.deleted_at.is_(None),
+        )
+        asset_res = await self.db.execute(asset_stmt)
+        assets = asset_res.scalars().all()
+
+        assets_copied_count = 0
+        for asset in assets:
+            new_asset = SourceAsset(
+                workspace_id=target_workspace_id,
+                folder_id=id_map[asset.folder_id],
+                user_id=user_id,
+                gcs_uri=asset.gcs_uri,
+                original_filename=asset.original_filename,
+                titles=list(asset.titles) if asset.titles else [],
+                descriptions=(
+                    list(asset.descriptions) if asset.descriptions else []
+                ),
+                mime_type=asset.mime_type,
+                aspect_ratio=asset.aspect_ratio,
+                file_hash=asset.file_hash,
+                scope=asset.scope,
+                asset_type=asset.asset_type,
+                thumbnail_gcs_uri=asset.thumbnail_gcs_uri,
+                original_gcs_uri=asset.original_gcs_uri,
+                external_url=asset.external_url,
+            )
+            self.db.add(new_asset)
+            assets_copied_count += 1
+
+        await self.db.commit()
+
+        return {
+            "folders_copied": len(id_map),
+            "media_copied": media_copied_count,
+            "assets_copied": assets_copied_count,
+        }
