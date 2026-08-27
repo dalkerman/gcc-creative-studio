@@ -34,6 +34,7 @@ import {MatDialog} from '@angular/material/dialog';
 import {MatSnackBar} from '@angular/material/snack-bar';
 import {MatIconRegistry} from '@angular/material/icon';
 import {DomSanitizer} from '@angular/platform-browser';
+import {ActivatedRoute, Router} from '@angular/router';
 import {Subscription, forkJoin} from 'rxjs';
 import {MediaItemSelection} from '../../common/components/image-selector/image-selector.component';
 import {CopyToWorkspaceDialogComponent} from '../../common/components/copy-to-workspace-dialog/copy-to-workspace-dialog.component';
@@ -145,6 +146,8 @@ export class MediaGalleryComponent implements OnInit, OnDestroy, AfterViewInit {
   toggleAdvancedFilters() {
     this.showAdvancedFilters = !this.showAdvancedFilters;
   }
+  private routeSub: Subscription | undefined;
+  private workspaceSub: Subscription | undefined;
   private imagesSubscription: Subscription | undefined;
   private allImagesLoadedSubscription: Subscription | undefined;
   private loadingSubscription: Subscription | undefined;
@@ -252,6 +255,8 @@ export class MediaGalleryComponent implements OnInit, OnDestroy, AfterViewInit {
     public uploadService: MediaUploadService,
     private googleDriveService: GoogleDriveService,
     private folderService: FolderService,
+    private route: ActivatedRoute,
+    private router: Router,
     @Inject(PLATFORM_ID) platformId: Object,
   ) {
     this.isBrowser = isPlatformBrowser(platformId);
@@ -317,20 +322,53 @@ export class MediaGalleryComponent implements OnInit, OnDestroy, AfterViewInit {
       });
 
     if (this.isBrowser) {
-      this.loadFolders();
-      this.searchTerm();
       this.showFeaturesHint();
 
-      this.workspaceStateService.activeWorkspaceId$.subscribe(workspaceId => {
-        if (workspaceId) {
-          this.tagsCurrentPage = 1;
-          this.loadTags();
-          this.currentFolderId = null;
-          this.breadcrumbs = [];
+      if (!this.isSelectionMode && !this.isSelectorMode) {
+        this.routeSub = this.route.paramMap.subscribe(params => {
+          const folderIdParam = params.get('folderId');
+          this.currentFolderId = folderIdParam ? Number(folderIdParam) : null;
           this.loadFolders();
+          this.loadBreadcrumbs();
           this.searchTerm();
-        }
-      });
+        });
+      } else {
+        this.loadFolders();
+        this.loadBreadcrumbs();
+        this.searchTerm();
+      }
+
+      let lastWorkspaceId = this.workspaceStateService.getActiveWorkspaceId();
+
+      this.workspaceSub =
+        this.workspaceStateService.activeWorkspaceId$.subscribe(workspaceId => {
+          if (workspaceId) {
+            this.tagsCurrentPage = 1;
+            this.loadTags();
+            if (lastWorkspaceId !== null && lastWorkspaceId !== workspaceId) {
+              lastWorkspaceId = workspaceId;
+              if (this.currentFolderId !== null) {
+                if (!this.isSelectionMode && !this.isSelectorMode) {
+                  void this.router.navigate(['/gallery']);
+                } else {
+                  this.currentFolderId = null;
+                  this.breadcrumbs = [];
+                  this.loadFolders();
+                  this.searchTerm();
+                }
+              } else {
+                this.breadcrumbs = [];
+                this.loadFolders();
+                this.searchTerm();
+              }
+            } else {
+              this.breadcrumbs = [];
+              this.loadFolders();
+              this.searchTerm();
+              lastWorkspaceId = workspaceId;
+            }
+          }
+        });
     }
   }
 
@@ -421,6 +459,11 @@ export class MediaGalleryComponent implements OnInit, OnDestroy, AfterViewInit {
       });
     }
 
+    this.routeSub?.unsubscribe();
+    this.workspaceSub?.unsubscribe();
+    this.imagesSubscription?.unsubscribe();
+    this.loadingSubscription?.unsubscribe();
+    this.allImagesLoadedSubscription?.unsubscribe();
     this.resizeSubscription?.unsubscribe();
     this.uploadBatchSubscription?.unsubscribe();
     this._hostVisibilityObserver?.disconnect();
@@ -988,22 +1031,38 @@ export class MediaGalleryComponent implements OnInit, OnDestroy, AfterViewInit {
       },
       error: err => {
         console.error('Error loading breadcrumbs:', err);
+        if (!this.isSelectionMode && !this.isSelectorMode) {
+          this.snackBar.open('Folder not found', 'Close', {duration: 3000});
+          void this.router.navigate(['/gallery']);
+        }
       },
     });
   }
 
   navigateToFolder(folder: Folder): void {
-    this.currentFolderId = folder.id;
-    this.loadFolders();
-    this.loadBreadcrumbs();
-    this.searchTerm();
+    if (!this.isSelectionMode && !this.isSelectorMode) {
+      void this.router.navigate(['/folders', folder.id]);
+    } else {
+      this.currentFolderId = folder.id;
+      this.loadFolders();
+      this.loadBreadcrumbs();
+      this.searchTerm();
+    }
   }
 
   navigateToBreadcrumb(breadcrumb: FolderBreadcrumb | null): void {
-    this.currentFolderId = breadcrumb ? breadcrumb.id : null;
-    this.loadFolders();
-    this.loadBreadcrumbs();
-    this.searchTerm();
+    if (!this.isSelectionMode && !this.isSelectorMode) {
+      if (breadcrumb) {
+        void this.router.navigate(['/folders', breadcrumb.id]);
+      } else {
+        void this.router.navigate(['/gallery']);
+      }
+    } else {
+      this.currentFolderId = breadcrumb ? breadcrumb.id : null;
+      this.loadFolders();
+      this.loadBreadcrumbs();
+      this.searchTerm();
+    }
   }
 
   openCreateFolderDialog(): void {

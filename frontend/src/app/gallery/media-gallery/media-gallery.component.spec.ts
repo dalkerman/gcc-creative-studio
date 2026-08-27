@@ -21,7 +21,13 @@ import {DomSanitizer} from '@angular/platform-browser';
 import {MatIconModule} from '@angular/material/icon';
 import {MatMenuModule} from '@angular/material/menu';
 import {NoopAnimationsModule} from '@angular/platform-browser/animations';
-import {of} from 'rxjs';
+import {
+  ActivatedRoute,
+  convertToParamMap,
+  ParamMap,
+  Router,
+} from '@angular/router';
+import {BehaviorSubject, of, throwError} from 'rxjs';
 import {MediaGalleryComponent} from './media-gallery.component';
 import {GalleryService} from '../gallery.service';
 import {UserService} from '../../common/services/user.service';
@@ -38,8 +44,14 @@ describe('MediaGalleryComponent', () => {
   let uploadService: MediaUploadService;
   let folderService: jasmine.SpyObj<FolderService>;
   let galleryService: GalleryService;
+  let routerSpy: jasmine.SpyObj<Router>;
+  let paramMapSubject: BehaviorSubject<ParamMap>;
+  let activeWorkspaceIdSubject: BehaviorSubject<number | null>;
 
   beforeEach(async () => {
+    paramMapSubject = new BehaviorSubject<ParamMap>(convertToParamMap({}));
+    activeWorkspaceIdSubject = new BehaviorSubject<number | null>(1);
+    routerSpy = jasmine.createSpyObj('Router', ['navigate', 'navigateByUrl']);
     const folderServiceSpy = jasmine.createSpyObj('FolderService', [
       'getFolders',
       'getBreadcrumbs',
@@ -115,9 +127,19 @@ describe('MediaGalleryComponent', () => {
         {
           provide: WorkspaceStateService,
           useValue: {
-            activeWorkspaceId$: of(1),
-            getActiveWorkspaceId: () => 1,
+            activeWorkspaceId$: activeWorkspaceIdSubject.asObservable(),
+            getActiveWorkspaceId: () => activeWorkspaceIdSubject.value,
           },
+        },
+        {
+          provide: ActivatedRoute,
+          useValue: {
+            paramMap: paramMapSubject.asObservable(),
+          },
+        },
+        {
+          provide: Router,
+          useValue: routerSpy,
         },
         {
           provide: TagsService,
@@ -431,6 +453,121 @@ describe('MediaGalleryComponent', () => {
         [{id: 10, type: 'folder'}],
         88,
       );
+    });
+  });
+
+  describe('Route-driven Folder Navigation', () => {
+    it('should initialize at root when no folderId param is present', () => {
+      expect(component.currentFolderId).toBeNull();
+      expect(folderService.getFolders).toHaveBeenCalledWith(1, null);
+    });
+
+    it('should update currentFolderId and load folders/breadcrumbs when folderId route param changes', () => {
+      spyOn(component, 'loadFolders').and.callThrough();
+      spyOn(component, 'loadBreadcrumbs').and.callThrough();
+      spyOn(component, 'searchTerm').and.callThrough();
+
+      paramMapSubject.next(convertToParamMap({folderId: '42'}));
+
+      expect(component.currentFolderId).toBe(42);
+      expect(component.loadFolders).toHaveBeenCalled();
+      expect(component.loadBreadcrumbs).toHaveBeenCalled();
+      expect(folderService.getBreadcrumbs).toHaveBeenCalledWith(42);
+      expect(component.searchTerm).toHaveBeenCalled();
+    });
+
+    it('should navigate via router when navigateToFolder is called in standalone mode', () => {
+      component.isSelectorMode = false;
+      component.isSelectionMode = false;
+
+      const folder = {id: 15, name: 'Subfolder', workspaceId: 1} as any;
+      component.navigateToFolder(folder);
+
+      expect(routerSpy.navigate).toHaveBeenCalledWith(['/folders', 15]);
+    });
+
+    it('should update in-place without router when navigateToFolder is called in selector mode', () => {
+      component.isSelectorMode = true;
+      spyOn(component, 'loadFolders');
+      spyOn(component, 'loadBreadcrumbs');
+      spyOn(component, 'searchTerm');
+
+      const folder = {id: 15, name: 'Subfolder', workspaceId: 1} as any;
+      component.navigateToFolder(folder);
+
+      expect(routerSpy.navigate).not.toHaveBeenCalled();
+      expect(component.currentFolderId).toBe(15);
+      expect(component.loadFolders).toHaveBeenCalled();
+      expect(component.loadBreadcrumbs).toHaveBeenCalled();
+      expect(component.searchTerm).toHaveBeenCalled();
+    });
+
+    it('should navigate to root /gallery when navigateToBreadcrumb is called with null', () => {
+      component.isSelectorMode = false;
+      component.isSelectionMode = false;
+
+      component.navigateToBreadcrumb(null);
+
+      expect(routerSpy.navigate).toHaveBeenCalledWith(['/gallery']);
+    });
+
+    it('should navigate to /folders/:id when navigateToBreadcrumb is called with a breadcrumb', () => {
+      component.isSelectorMode = false;
+      component.isSelectionMode = false;
+
+      const crumb = {id: 7, name: 'Crumb Folder'};
+      component.navigateToBreadcrumb(crumb);
+
+      expect(routerSpy.navigate).toHaveBeenCalledWith(['/folders', 7]);
+    });
+
+    it('should update in-place without router when navigateToBreadcrumb is called in selector mode', () => {
+      component.isSelectorMode = true;
+      spyOn(component, 'loadFolders');
+      spyOn(component, 'loadBreadcrumbs');
+      spyOn(component, 'searchTerm');
+
+      const crumb = {id: 7, name: 'Crumb Folder'};
+      component.navigateToBreadcrumb(crumb);
+
+      expect(routerSpy.navigate).not.toHaveBeenCalled();
+      expect(component.currentFolderId).toBe(7);
+      expect(component.loadFolders).toHaveBeenCalled();
+      expect(component.loadBreadcrumbs).toHaveBeenCalled();
+      expect(component.searchTerm).toHaveBeenCalled();
+    });
+
+    it('should redirect to /gallery and show snackbar when breadcrumbs fail to load in standalone mode', () => {
+      const snackBar = TestBed.inject(MatSnackBar);
+      folderService.getBreadcrumbs.and.returnValue(
+        throwError(() => new Error('Folder not found')),
+      );
+
+      component.currentFolderId = 999;
+      component.loadBreadcrumbs();
+
+      expect(snackBar.open).toHaveBeenCalledWith('Folder not found', 'Close', {
+        duration: 3000,
+      });
+      expect(routerSpy.navigate).toHaveBeenCalledWith(['/gallery']);
+    });
+
+    it('should navigate to /gallery on workspace change if inside a folder in standalone mode', () => {
+      component.isSelectorMode = false;
+      component.isSelectionMode = false;
+      component.currentFolderId = 5;
+
+      activeWorkspaceIdSubject.next(2);
+
+      expect(routerSpy.navigate).toHaveBeenCalledWith(['/gallery']);
+    });
+
+    it('should not navigate to /gallery on initial load when currentFolderId is set from route', () => {
+      routerSpy.navigate.calls.reset();
+      paramMapSubject.next(convertToParamMap({folderId: '42'}));
+
+      expect(component.currentFolderId).toBe(42);
+      expect(routerSpy.navigate).not.toHaveBeenCalledWith(['/gallery']);
     });
   });
 });
