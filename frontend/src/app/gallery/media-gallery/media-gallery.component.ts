@@ -346,26 +346,11 @@ export class MediaGalleryComponent implements OnInit, OnDestroy, AfterViewInit {
             this.tagsCurrentPage = 1;
             this.loadTags();
             if (lastWorkspaceId !== null && lastWorkspaceId !== workspaceId) {
-              lastWorkspaceId = workspaceId;
-              if (this.currentFolderId !== null) {
-                if (!this.isSelectionMode && !this.isSelectorMode) {
-                  void this.router.navigate(['/gallery']);
-                } else {
-                  this.currentFolderId = null;
-                  this.breadcrumbs = [];
-                  this.loadFolders();
-                  this.searchTerm();
-                }
-              } else {
-                this.breadcrumbs = [];
-                this.loadFolders();
-                this.searchTerm();
-              }
+              this.router.navigate(['/gallery']);
             } else {
               this.breadcrumbs = [];
               this.loadFolders();
               this.searchTerm();
-              lastWorkspaceId = workspaceId;
             }
           }
         });
