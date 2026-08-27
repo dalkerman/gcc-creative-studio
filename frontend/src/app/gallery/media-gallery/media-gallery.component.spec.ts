@@ -55,6 +55,7 @@ describe('MediaGalleryComponent', () => {
     const folderServiceSpy = jasmine.createSpyObj('FolderService', [
       'getFolders',
       'getBreadcrumbs',
+      'getFolderById',
       'moveItems',
       'createFolder',
       'updateFolder',
@@ -62,6 +63,16 @@ describe('MediaGalleryComponent', () => {
     ]);
     folderServiceSpy.getFolders.and.returnValue(of([]));
     folderServiceSpy.getBreadcrumbs.and.returnValue(of([]));
+    folderServiceSpy.getFolderById.and.returnValue(
+      of({
+        id: 42,
+        workspaceId: 1,
+        name: 'Folder 42',
+        userEmail: 'u@test.com',
+        itemCount: 0,
+        subfolderCount: 0,
+      }),
+    );
     folderServiceSpy.moveItems.and.returnValue(of({total_moved: 1}));
 
     await TestBed.configureTestingModule({
@@ -537,37 +548,43 @@ describe('MediaGalleryComponent', () => {
       expect(component.searchTerm).toHaveBeenCalled();
     });
 
-    it('should redirect to /gallery and show snackbar when breadcrumbs fail to load in standalone mode', () => {
-      const snackBar = TestBed.inject(MatSnackBar);
-      folderService.getBreadcrumbs.and.returnValue(
-        throwError(() => new Error('Folder not found')),
+    it('should automatically switch workspace if folder belongs to another accessible workspace', () => {
+      const workspaceStateService = TestBed.inject(WorkspaceStateService);
+      spyOn(workspaceStateService, 'setActiveWorkspaceId');
+
+      folderService.getFolderById.and.returnValue(
+        of({
+          id: 19,
+          workspaceId: 2,
+          name: 'Folder 19 in Workspace 2',
+          userEmail: 'u@test.com',
+          itemCount: 0,
+          subfolderCount: 0,
+        }),
       );
 
-      component.currentFolderId = 999;
-      component.loadBreadcrumbs();
+      paramMapSubject.next(convertToParamMap({folderId: '19'}));
 
-      expect(snackBar.open).toHaveBeenCalledWith('Folder not found', 'Close', {
-        duration: 3000,
-      });
-      expect(routerSpy.navigate).toHaveBeenCalledWith(['/gallery']);
+      expect(component.currentFolderId).toBe(19);
+      expect(workspaceStateService.setActiveWorkspaceId).toHaveBeenCalledWith(
+        2,
+      );
     });
 
-    it('should navigate to /gallery on workspace change if inside a folder in standalone mode', () => {
-      component.isSelectorMode = false;
-      component.isSelectionMode = false;
-      component.currentFolderId = 5;
+    it('should redirect to /gallery and show snackbar when folder fetch fails on direct route navigation', () => {
+      const snackBar = TestBed.inject(MatSnackBar);
+      folderService.getFolderById.and.returnValue(
+        throwError(() => new Error('Forbidden')),
+      );
 
-      activeWorkspaceIdSubject.next(2);
+      paramMapSubject.next(convertToParamMap({folderId: '999'}));
 
+      expect(snackBar.open).toHaveBeenCalledWith(
+        "Folder not found or you don't have access",
+        'Close',
+        {duration: 3000},
+      );
       expect(routerSpy.navigate).toHaveBeenCalledWith(['/gallery']);
-    });
-
-    it('should not navigate to /gallery on initial load when currentFolderId is set from route', () => {
-      routerSpy.navigate.calls.reset();
-      paramMapSubject.next(convertToParamMap({folderId: '42'}));
-
-      expect(component.currentFolderId).toBe(42);
-      expect(routerSpy.navigate).not.toHaveBeenCalledWith(['/gallery']);
     });
   });
 });

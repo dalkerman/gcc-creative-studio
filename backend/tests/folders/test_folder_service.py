@@ -40,10 +40,18 @@ def fixture_mock_folder_repo():
     return mock
 
 
+@pytest.fixture(name="mock_workspace_auth")
+def fixture_mock_workspace_auth():
+    """Provides a mocked WorkspaceAuth."""
+    return AsyncMock()
+
+
 @pytest.fixture(name="folder_service")
-def fixture_folder_service(mock_folder_repo):
+def fixture_folder_service(mock_folder_repo, mock_workspace_auth):
     """Provides a FolderService instance."""
-    return FolderService(folder_repo=mock_folder_repo)
+    return FolderService(
+        folder_repo=mock_folder_repo, workspace_auth=mock_workspace_auth
+    )
 
 
 @pytest.fixture(name="sample_user")
@@ -199,6 +207,28 @@ class TestGetFolder:
         assert result.item_count == 10
 
     @pytest.mark.anyio
+    async def test_get_folder_by_id_with_user_auth(
+        self, folder_service, mock_folder_repo, mock_workspace_auth, sample_user
+    ):
+        mock_folder_repo.get_folder_by_id.return_value = Folder(
+            id=1,
+            workspace_id=1,
+            user_id=1,
+            user_email="a@b.com",
+            name="F1",
+            parent_id=None,
+        )
+        mock_folder_repo.list_by_parent.return_value = []
+
+        result = await folder_service.get_folder_by_id(
+            folder_id=1, user=sample_user
+        )
+        assert result.id == 1
+        mock_workspace_auth.authorize.assert_called_once_with(
+            workspace_id=1, user=sample_user
+        )
+
+    @pytest.mark.anyio
     async def test_get_folder_by_id_not_found(
         self, folder_service, mock_folder_repo
     ):
@@ -221,6 +251,25 @@ class TestGetFolder:
         result = await folder_service.get_breadcrumbs(folder_id=2)
         assert len(result) == 2
         assert result[0].name == "Root"
+
+    @pytest.mark.anyio
+    async def test_get_breadcrumbs_with_user_auth(
+        self, folder_service, mock_folder_repo, mock_workspace_auth, sample_user
+    ):
+        mock_folder_repo.get_folder_by_id.return_value = Folder(
+            id=2, workspace_id=1, user_email="a@b.com", name="Sub"
+        )
+        mock_folder_repo.get_breadcrumbs.return_value = [
+            FolderBreadcrumbDto(id=2, name="Sub", parent_id=None),
+        ]
+
+        result = await folder_service.get_breadcrumbs(
+            folder_id=2, user=sample_user
+        )
+        assert len(result) == 1
+        mock_workspace_auth.authorize.assert_called_once_with(
+            workspace_id=1, user=sample_user
+        )
 
     @pytest.mark.anyio
     async def test_get_tree(self, folder_service, mock_folder_repo):

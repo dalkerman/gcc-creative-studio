@@ -29,6 +29,7 @@ from src.folders.dto.folder_dto import (
 from src.folders.repository.folder_repository import FolderRepository
 from src.folders.schema.folder_model import Folder
 from src.users.user_model import UserModel
+from src.workspaces.workspace_auth_guard import WorkspaceAuth
 
 logger = logging.getLogger(__name__)
 
@@ -36,8 +37,13 @@ logger = logging.getLogger(__name__)
 class FolderService:
     """Service layer handling validation, hierarchy integrity, and business logic for folders."""
 
-    def __init__(self, folder_repo: FolderRepository = Depends()):
+    def __init__(
+        self,
+        folder_repo: FolderRepository = Depends(),
+        workspace_auth: WorkspaceAuth = Depends(),
+    ):
         self.folder_repo = folder_repo
+        self.workspace_auth = workspace_auth
 
     async def create_folder(
         self, dto: FolderCreateDto, user: UserModel
@@ -109,13 +115,20 @@ class FolderService:
             workspace_id=workspace_id, parent_id=parent_id
         )
 
-    async def get_folder_by_id(self, folder_id: int) -> FolderResponseDto:
+    async def get_folder_by_id(
+        self, folder_id: int, user: UserModel | None = None
+    ) -> FolderResponseDto:
         """Fetch folder by ID with item and subfolder counts."""
         folder = await self.folder_repo.get_folder_by_id(folder_id)
         if not folder:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Folder with ID {folder_id} not found.",
+            )
+        if user:
+            await self.workspace_auth.authorize(
+                workspace_id=folder.workspace_id,
+                user=user,
             )
 
         # Get counts
@@ -141,7 +154,7 @@ class FolderService:
         )
 
     async def get_breadcrumbs(
-        self, folder_id: int
+        self, folder_id: int, user: UserModel | None = None
     ) -> list[FolderBreadcrumbDto]:
         """Fetch ancestor breadcrumb trail from root to the given folder."""
         folder = await self.folder_repo.get_folder_by_id(folder_id)
@@ -149,6 +162,11 @@ class FolderService:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Folder with ID {folder_id} not found.",
+            )
+        if user:
+            await self.workspace_auth.authorize(
+                workspace_id=folder.workspace_id,
+                user=user,
             )
         return await self.folder_repo.get_breadcrumbs(folder_id)
 
@@ -168,6 +186,10 @@ class FolderService:
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Folder with ID {folder_id} not found.",
             )
+        await self.workspace_auth.authorize(
+            workspace_id=folder.workspace_id,
+            user=user,
+        )
 
         is_moving = False
         new_parent_id = folder.parent_id
@@ -250,7 +272,7 @@ class FolderService:
                 detail=f"A folder named '{folder.name}' already exists in this location.",
             ) from e
 
-        return await self.get_folder_by_id(folder.id)
+        return await self.get_folder_by_id(folder.id, user=user)
 
     async def delete_folder(
         self, folder_id: int, user: UserModel
@@ -262,6 +284,10 @@ class FolderService:
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Folder with ID {folder_id} not found.",
             )
+        await self.workspace_auth.authorize(
+            workspace_id=folder.workspace_id,
+            user=user,
+        )
 
         success = await self.folder_repo.soft_delete(
             folder_id=folder_id, user_id=user.id

@@ -324,13 +324,50 @@ export class MediaGalleryComponent implements OnInit, OnDestroy, AfterViewInit {
     if (this.isBrowser) {
       this.showFeaturesHint();
 
+      let lastWorkspaceId = this.workspaceStateService.getActiveWorkspaceId();
+
       if (!this.isSelectionMode && !this.isSelectorMode) {
         this.routeSub = this.route.paramMap.subscribe(params => {
           const folderIdParam = params.get('folderId');
-          this.currentFolderId = folderIdParam ? Number(folderIdParam) : null;
-          this.loadFolders();
-          this.loadBreadcrumbs();
-          this.searchTerm();
+          const folderId = folderIdParam ? Number(folderIdParam) : null;
+          this.currentFolderId = folderId;
+
+          if (folderId !== null) {
+            this.folderService.getFolderById(folderId).subscribe({
+              next: folder => {
+                const folderWorkspaceId =
+                  folder.workspaceId || (folder as any).workspace_id;
+                const activeWorkspaceId =
+                  this.workspaceStateService.getActiveWorkspaceId();
+
+                if (
+                  folderWorkspaceId &&
+                  folderWorkspaceId !== activeWorkspaceId
+                ) {
+                  lastWorkspaceId = folderWorkspaceId;
+                  this.workspaceStateService.setActiveWorkspaceId(
+                    folderWorkspaceId,
+                  );
+                }
+                this.loadFolders();
+                this.loadBreadcrumbs();
+                this.searchTerm();
+              },
+              error: err => {
+                console.error('Error fetching folder for navigation:', err);
+                this.snackBar.open(
+                  "Folder not found or you don't have access",
+                  'Close',
+                  {duration: 3000},
+                );
+                void this.router.navigate(['/gallery']);
+              },
+            });
+          } else {
+            this.loadFolders();
+            this.loadBreadcrumbs();
+            this.searchTerm();
+          }
         });
       } else {
         this.loadFolders();
@@ -338,20 +375,34 @@ export class MediaGalleryComponent implements OnInit, OnDestroy, AfterViewInit {
         this.searchTerm();
       }
 
-      let lastWorkspaceId = this.workspaceStateService.getActiveWorkspaceId();
-
       this.workspaceSub =
         this.workspaceStateService.activeWorkspaceId$.subscribe(workspaceId => {
-          if (workspaceId) {
-            this.tagsCurrentPage = 1;
-            this.loadTags();
-            if (lastWorkspaceId !== null && lastWorkspaceId !== workspaceId) {
-              this.router.navigate(['/gallery']);
-            } else {
-              this.breadcrumbs = [];
-              this.loadFolders();
-              this.searchTerm();
-            }
+          if (!workspaceId) {
+            return;
+          }
+
+          this.tagsCurrentPage = 1;
+          this.loadTags();
+
+          const isWorkspaceChanged =
+            lastWorkspaceId !== null && lastWorkspaceId !== workspaceId;
+          lastWorkspaceId = workspaceId;
+
+          if (!isWorkspaceChanged) {
+            return;
+          }
+
+          if (
+            !this.isSelectionMode &&
+            !this.isSelectorMode &&
+            this.currentFolderId !== null
+          ) {
+            void this.router.navigate(['/gallery']);
+          } else {
+            this.currentFolderId = null;
+            this.breadcrumbs = [];
+            this.loadFolders();
+            this.searchTerm();
           }
         });
     }
@@ -1017,7 +1068,11 @@ export class MediaGalleryComponent implements OnInit, OnDestroy, AfterViewInit {
       error: err => {
         console.error('Error loading breadcrumbs:', err);
         if (!this.isSelectionMode && !this.isSelectorMode) {
-          this.snackBar.open('Folder not found', 'Close', {duration: 3000});
+          this.snackBar.open(
+            "Folder not found or you don't have access",
+            'Close',
+            {duration: 3000},
+          );
           void this.router.navigate(['/gallery']);
         }
       },

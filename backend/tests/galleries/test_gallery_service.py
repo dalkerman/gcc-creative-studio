@@ -174,6 +174,67 @@ async def test_get_paginated_gallery_regular_user(service):
 
 
 @pytest.mark.anyio
+async def test_get_paginated_gallery_folder_not_found(service):
+    current_user = UserModel(
+        id=1, email="user@test.com", name="User", roles=[UserRoleEnum.USER]
+    )
+    search_dto = GallerySearchDto(limit=10, offset=0, folder_id=999)
+    service.mock_folder_repo.get_folder_by_id.return_value = None
+
+    with pytest.raises(HTTPException) as exc_info:
+        await service.get_paginated_gallery(search_dto, current_user)
+    assert exc_info.value.status_code == 404
+    assert "Folder with ID 999 not found" in exc_info.value.detail
+
+
+@pytest.mark.anyio
+async def test_get_paginated_gallery_folder_mismatched_workspace(service):
+    current_user = UserModel(
+        id=1, email="user@test.com", name="User", roles=[UserRoleEnum.USER]
+    )
+    search_dto = GallerySearchDto(
+        limit=10, offset=0, workspace_id=1, folder_id=19
+    )
+    mock_folder = MagicMock()
+    mock_folder.id = 19
+    mock_folder.workspace_id = 2
+    service.mock_folder_repo.get_folder_by_id.return_value = mock_folder
+
+    with pytest.raises(HTTPException) as exc_info:
+        await service.get_paginated_gallery(search_dto, current_user)
+    assert exc_info.value.status_code == 404
+    assert "Folder with ID 19 not found in workspace 1" in exc_info.value.detail
+
+
+@pytest.mark.anyio
+async def test_get_paginated_gallery_folder_success(service):
+    current_user = UserModel(
+        id=1, email="user@test.com", name="User", roles=[UserRoleEnum.USER]
+    )
+    search_dto = GallerySearchDto(
+        limit=10, offset=0, workspace_id=1, folder_id=10
+    )
+    mock_folder = MagicMock()
+    mock_folder.id = 10
+    mock_folder.workspace_id = 1
+    service.mock_folder_repo.get_folder_by_id.return_value = mock_folder
+
+    mock_query_result = MagicMock()
+    mock_query_result.data = []
+    mock_query_result.count = 0
+    mock_query_result.page = 1
+    mock_query_result.page_size = 10
+    mock_query_result.total_pages = 0
+    service.mock_unified_gallery_repo.query.return_value = mock_query_result
+
+    result = await service.get_paginated_gallery(search_dto, current_user)
+    assert result.count == 0
+    service.mock_workspace_auth.authorize.assert_called_once_with(
+        workspace_id=1, user=current_user
+    )
+
+
+@pytest.mark.anyio
 async def test_get_media_by_id_success(service):
     current_user = UserModel(
         id=1,

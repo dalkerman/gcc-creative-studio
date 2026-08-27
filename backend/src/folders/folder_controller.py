@@ -115,10 +115,11 @@ async def get_folder_tree(
 )
 async def get_folder_breadcrumbs(
     folder_id: int,
+    current_user: UserModel = Depends(get_current_user),
     service: FolderService = Depends(),
 ) -> list[FolderBreadcrumbDto]:
     """Get ancestor breadcrumbs from root to current folder."""
-    return await service.get_breadcrumbs(folder_id=folder_id)
+    return await service.get_breadcrumbs(folder_id=folder_id, user=current_user)
 
 
 @router.get(
@@ -127,10 +128,13 @@ async def get_folder_breadcrumbs(
 )
 async def get_folder(
     folder_id: int,
+    current_user: UserModel = Depends(get_current_user),
     service: FolderService = Depends(),
 ) -> FolderResponseDto:
     """Get single folder details by ID."""
-    return await service.get_folder_by_id(folder_id=folder_id)
+    return await service.get_folder_by_id(
+        folder_id=folder_id, user=current_user
+    )
 
 
 @router.patch(
