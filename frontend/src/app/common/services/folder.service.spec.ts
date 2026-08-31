@@ -106,4 +106,49 @@ describe('FolderService', () => {
     expect(req.request.method).toBe('POST');
     req.flush({total_moved: 2});
   });
+
+  it('should get breadcrumbs without workspace_id when not provided', () => {
+    service.getBreadcrumbs(5).subscribe(crumbs => {
+      expect(crumbs.length).toBe(1);
+      expect(crumbs[0].name).toBe('Folder 5');
+    });
+
+    const req = httpMock.expectOne(
+      `${environment.backendURL}/folders/5/breadcrumbs`,
+    );
+    expect(req.request.method).toBe('GET');
+    req.flush([{id: 5, name: 'Folder 5', parentId: null}]);
+  });
+
+  it('should get breadcrumbs with workspace_id when provided', () => {
+    service.getBreadcrumbs(5, 1).subscribe(crumbs => {
+      expect(crumbs.length).toBe(1);
+      expect(crumbs[0].name).toBe('Folder 5');
+    });
+
+    const req = httpMock.expectOne(
+      `${environment.backendURL}/folders/5/breadcrumbs?workspace_id=1`,
+    );
+    expect(req.request.method).toBe('GET');
+    req.flush([{id: 5, name: 'Folder 5', parentId: null}]);
+  });
+
+  it('should get folder by id with workspace_id when provided', () => {
+    service.getFolderById(5, 1).subscribe(folder => {
+      expect(folder.id).toBe(5);
+    });
+
+    const req = httpMock.expectOne(
+      `${environment.backendURL}/folders/5?workspace_id=1`,
+    );
+    expect(req.request.method).toBe('GET');
+    req.flush({
+      id: 5,
+      workspaceId: 1,
+      name: 'Folder 5',
+      userEmail: 'user@test.com',
+      itemCount: 0,
+      subfolderCount: 0,
+    });
+  });
 });

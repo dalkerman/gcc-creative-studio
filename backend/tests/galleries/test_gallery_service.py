@@ -174,6 +174,81 @@ async def test_get_paginated_gallery_regular_user(service):
 
 
 @pytest.mark.anyio
+async def test_get_paginated_gallery_with_folder_id_success(service):
+    current_user = UserModel(
+        id=2,
+        email="user@test.com",
+        name="User",
+        roles=[UserRoleEnum.USER],
+    )
+    search_dto = GallerySearchDto(
+        workspace_id=1, folder_id=10, limit=10, offset=0
+    )
+
+    mock_folder = MagicMock()
+    mock_folder.id = 10
+    mock_folder.workspace_id = 1
+    mock_folder.name = "Folder 10"
+    service.mock_folder_repo.get_folder_by_id.return_value = mock_folder
+
+    mock_query_result = MagicMock()
+    mock_query_result.data = []
+    mock_query_result.count = 0
+    mock_query_result.page = 1
+    mock_query_result.page_size = 10
+    mock_query_result.total_pages = 0
+    service.mock_unified_gallery_repo.query.return_value = mock_query_result
+
+    res = await service.get_paginated_gallery(search_dto, current_user)
+    assert res.count == 0
+
+
+@pytest.mark.anyio
+async def test_get_paginated_gallery_with_folder_id_not_found(service):
+    current_user = UserModel(
+        id=2,
+        email="user@test.com",
+        name="User",
+        roles=[UserRoleEnum.USER],
+    )
+    search_dto = GallerySearchDto(
+        workspace_id=1, folder_id=999, limit=10, offset=0
+    )
+
+    service.mock_folder_repo.get_folder_by_id.return_value = None
+
+    with pytest.raises(HTTPException) as exc_info:
+        await service.get_paginated_gallery(search_dto, current_user)
+    assert exc_info.value.status_code == 404
+    assert "not found in this workspace" in exc_info.value.detail
+
+
+@pytest.mark.anyio
+async def test_get_paginated_gallery_with_folder_id_workspace_mismatch(service):
+    current_user = UserModel(
+        id=2,
+        email="user@test.com",
+        name="User",
+        roles=[UserRoleEnum.USER],
+    )
+    search_dto = GallerySearchDto(
+        workspace_id=1, folder_id=10, limit=10, offset=0
+    )
+
+    # Folder belongs to workspace 2 instead of workspace 1
+    mock_folder = MagicMock()
+    mock_folder.id = 10
+    mock_folder.workspace_id = 2
+    mock_folder.name = "Folder in WS2"
+    service.mock_folder_repo.get_folder_by_id.return_value = mock_folder
+
+    with pytest.raises(HTTPException) as exc_info:
+        await service.get_paginated_gallery(search_dto, current_user)
+    assert exc_info.value.status_code == 404
+    assert "not found in this workspace" in exc_info.value.detail
+
+
+@pytest.mark.anyio
 async def test_get_media_by_id_success(service):
     current_user = UserModel(
         id=1,

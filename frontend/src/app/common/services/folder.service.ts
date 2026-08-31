@@ -51,14 +51,26 @@ export class FolderService {
     return this.http.get<FolderTreeNode[]>(`${this.apiUrl}/tree`, {params});
   }
 
-  getBreadcrumbs(folderId: number): Observable<FolderBreadcrumb[]> {
+  getBreadcrumbs(
+    folderId: number,
+    workspaceId?: number,
+  ): Observable<FolderBreadcrumb[]> {
+    let params = new HttpParams();
+    if (workspaceId !== undefined && workspaceId !== null) {
+      params = params.set('workspace_id', workspaceId.toString());
+    }
     return this.http.get<FolderBreadcrumb[]>(
       `${this.apiUrl}/${folderId}/breadcrumbs`,
+      {params},
     );
   }
 
-  getFolderById(folderId: number): Observable<Folder> {
-    return this.http.get<Folder>(`${this.apiUrl}/${folderId}`);
+  getFolderById(folderId: number, workspaceId?: number): Observable<Folder> {
+    let params = new HttpParams();
+    if (workspaceId !== undefined && workspaceId !== null) {
+      params = params.set('workspace_id', workspaceId.toString());
+    }
+    return this.http.get<Folder>(`${this.apiUrl}/${folderId}`, {params});
   }
 
   createFolder(dto: CreateFolderDto): Observable<Folder> {

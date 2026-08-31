@@ -209,6 +209,19 @@ class TestGetFolder:
         assert exc_info.value.status_code == status.HTTP_404_NOT_FOUND
 
     @pytest.mark.anyio
+    async def test_get_folder_by_id_workspace_mismatch(
+        self, folder_service, mock_folder_repo
+    ):
+        mock_folder_repo.get_folder_by_id.return_value = Folder(
+            id=1, workspace_id=2, user_email="a@b.com", name="Folder in WS2"
+        )
+
+        with pytest.raises(HTTPException) as exc_info:
+            await folder_service.get_folder_by_id(folder_id=1, workspace_id=1)
+        assert exc_info.value.status_code == status.HTTP_404_NOT_FOUND
+        assert "not found in this workspace" in exc_info.value.detail
+
+    @pytest.mark.anyio
     async def test_get_breadcrumbs(self, folder_service, mock_folder_repo):
         mock_folder_repo.get_folder_by_id.return_value = Folder(
             id=2, workspace_id=1, user_email="a@b.com", name="Sub"
@@ -218,9 +231,34 @@ class TestGetFolder:
             FolderBreadcrumbDto(id=2, name="Sub", parent_id=1),
         ]
 
-        result = await folder_service.get_breadcrumbs(folder_id=2)
+        result = await folder_service.get_breadcrumbs(
+            folder_id=2, workspace_id=1
+        )
         assert len(result) == 2
         assert result[0].name == "Root"
+
+    @pytest.mark.anyio
+    async def test_get_breadcrumbs_not_found(
+        self, folder_service, mock_folder_repo
+    ):
+        mock_folder_repo.get_folder_by_id.return_value = None
+
+        with pytest.raises(HTTPException) as exc_info:
+            await folder_service.get_breadcrumbs(folder_id=999)
+        assert exc_info.value.status_code == status.HTTP_404_NOT_FOUND
+
+    @pytest.mark.anyio
+    async def test_get_breadcrumbs_workspace_mismatch(
+        self, folder_service, mock_folder_repo
+    ):
+        mock_folder_repo.get_folder_by_id.return_value = Folder(
+            id=2, workspace_id=2, user_email="a@b.com", name="Sub"
+        )
+
+        with pytest.raises(HTTPException) as exc_info:
+            await folder_service.get_breadcrumbs(folder_id=2, workspace_id=1)
+        assert exc_info.value.status_code == status.HTTP_404_NOT_FOUND
+        assert "not found in this workspace" in exc_info.value.detail
 
     @pytest.mark.anyio
     async def test_get_tree(self, folder_service, mock_folder_repo):

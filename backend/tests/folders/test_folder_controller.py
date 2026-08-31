@@ -157,6 +157,23 @@ class TestGetFolderBreadcrumbs:
         assert len(data) == 2
         assert data[0]["name"] == "Root"
         assert data[1]["name"] == "Child"
+        mock_folder_service.get_breadcrumbs.assert_called_once_with(
+            folder_id=2, workspace_id=None
+        )
+
+    def test_get_breadcrumbs_with_workspace_id(
+        self, api_client, mock_folder_service, mock_workspace_auth
+    ):
+        mock_folder_service.get_breadcrumbs.return_value = [
+            FolderBreadcrumbDto(id=2, name="Child", parent_id=None),
+        ]
+
+        response = api_client.get("/api/folders/2/breadcrumbs?workspace_id=1")
+        assert response.status_code == status.HTTP_200_OK
+        mock_workspace_auth.authorize.assert_called_once()
+        mock_folder_service.get_breadcrumbs.assert_called_once_with(
+            folder_id=2, workspace_id=1
+        )
 
 
 class TestGetFolderById:
@@ -179,12 +196,49 @@ class TestGetFolderById:
         data = response.json()
         assert data["id"] == 1
         assert data["itemCount"] == 5
+        mock_folder_service.get_folder_by_id.assert_called_once_with(
+            folder_id=1, workspace_id=None
+        )
+
+    def test_get_folder_by_id_with_workspace_id(
+        self, api_client, mock_folder_service, mock_workspace_auth
+    ):
+        mock_folder_service.get_folder_by_id.return_value = FolderResponseDto(
+            id=1,
+            workspace_id=1,
+            user_id=1,
+            user_email="user@example.com",
+            name="Folder A",
+            parent_id=None,
+            item_count=5,
+            subfolder_count=0,
+        )
+
+        response = api_client.get("/api/folders/1?workspace_id=1")
+        assert response.status_code == status.HTTP_200_OK
+        mock_workspace_auth.authorize.assert_called_once()
+        mock_folder_service.get_folder_by_id.assert_called_once_with(
+            folder_id=1, workspace_id=1
+        )
 
 
 class TestUpdateFolder:
     """Tests for PATCH /api/folders/{folder_id}."""
 
-    def test_update_folder_success(self, api_client, mock_folder_service):
+    def test_update_folder_success(
+        self, api_client, mock_folder_service, mock_workspace_auth
+    ):
+        existing_folder = FolderResponseDto(
+            id=1,
+            workspace_id=1,
+            user_id=1,
+            user_email="user@example.com",
+            name="Old Folder",
+            parent_id=None,
+            item_count=0,
+            subfolder_count=0,
+        )
+        mock_folder_service.get_folder_by_id.return_value = existing_folder
         mock_folder_service.update_folder.return_value = FolderResponseDto(
             id=1,
             workspace_id=1,
@@ -204,18 +258,33 @@ class TestUpdateFolder:
         assert response.status_code == status.HTTP_200_OK
         data = response.json()
         assert data["name"] == "Renamed Folder"
+        mock_workspace_auth.authorize.assert_called_once()
 
 
 class TestDeleteFolder:
     """Tests for DELETE /api/folders/{folder_id}."""
 
-    def test_delete_folder_success(self, api_client, mock_folder_service):
+    def test_delete_folder_success(
+        self, api_client, mock_folder_service, mock_workspace_auth
+    ):
+        existing_folder = FolderResponseDto(
+            id=1,
+            workspace_id=1,
+            user_id=1,
+            user_email="user@example.com",
+            name="Folder To Delete",
+            parent_id=None,
+            item_count=0,
+            subfolder_count=0,
+        )
+        mock_folder_service.get_folder_by_id.return_value = existing_folder
         mock_folder_service.delete_folder.return_value = {"success": True}
 
         response = api_client.delete("/api/folders/1")
         assert response.status_code == status.HTTP_200_OK
         data = response.json()
         assert data["success"] is True
+        mock_workspace_auth.authorize.assert_called_once()
 
 
 class TestMoveItems:

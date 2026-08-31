@@ -35,7 +35,7 @@ import {MatSnackBar} from '@angular/material/snack-bar';
 import {MatIconRegistry} from '@angular/material/icon';
 import {DomSanitizer} from '@angular/platform-browser';
 import {ActivatedRoute, Router} from '@angular/router';
-import {Subscription, forkJoin} from 'rxjs';
+import {Subscription, firstValueFrom, forkJoin} from 'rxjs';
 import {MediaItemSelection} from '../../common/components/image-selector/image-selector.component';
 import {CopyToWorkspaceDialogComponent} from '../../common/components/copy-to-workspace-dialog/copy-to-workspace-dialog.component';
 import {DropdownOption} from '../../common/components/studio-dropdown/studio-dropdown.component';
@@ -321,40 +321,50 @@ export class MediaGalleryComponent implements OnInit, OnDestroy, AfterViewInit {
         this.searchTerm();
       });
 
-    if (this.isBrowser) {
-      this.showFeaturesHint();
-
-      if (!this.isSelectionMode && !this.isSelectorMode) {
-        this.routeSub = this.route.paramMap.subscribe(params => {
-          const folderIdParam = params.get('folderId');
-          this.currentFolderId = folderIdParam ? Number(folderIdParam) : null;
-          this.loadFolders();
-          this.loadBreadcrumbs();
-          this.searchTerm();
-        });
-      } else {
-        this.loadFolders();
-        this.loadBreadcrumbs();
-        this.searchTerm();
-      }
-
-      let lastWorkspaceId = this.workspaceStateService.getActiveWorkspaceId();
-
-      this.workspaceSub =
-        this.workspaceStateService.activeWorkspaceId$.subscribe(workspaceId => {
-          if (workspaceId) {
-            this.tagsCurrentPage = 1;
-            this.loadTags();
-            if (lastWorkspaceId !== null && lastWorkspaceId !== workspaceId) {
-              this.router.navigate(['/gallery']);
-            } else {
-              this.breadcrumbs = [];
-              this.loadFolders();
-              this.searchTerm();
-            }
-          }
-        });
+    // Guard against SSR - do not load folders and breadcrumbs on server
+    if (!this.isBrowser) {
+      return;
     }
+
+    this.showFeaturesHint();
+
+    let lastWorkspaceId = this.workspaceStateService.getActiveWorkspaceId();
+
+    if (!this.isSelectionMode && !this.isSelectorMode) {
+      this.routeSub = this.route.paramMap.subscribe(params => {
+        const folderIdParam = params.get('folderId');
+        const wasRoot = this.currentFolderId === null;
+        this.currentFolderId = folderIdParam ? Number(folderIdParam) : null;
+        
+        if (wasRoot || !this.currentFolderId) {
+          return;
+        }
+        
+        this.reload();
+      });
+    }
+
+    this.workspaceSub =
+      this.workspaceStateService.activeWorkspaceId$.subscribe(workspaceId => {
+        if (!workspaceId) {
+          return;
+        }
+
+        if (lastWorkspaceId !== null && lastWorkspaceId !== workspaceId && this.currentFolderId !== null) {
+          void this.router.navigate(['/gallery']);
+        } else {
+          lastWorkspaceId = workspaceId;
+          this.reload();
+        }
+      });
+  }
+
+  private reload() {
+    this.tagsCurrentPage = 1;
+    this.loadTags();
+    this.loadFolders();
+    this.loadBreadcrumbs();
+    this.searchTerm();
   }
 
   private loadTags(search?: string): void {
@@ -1010,18 +1020,24 @@ export class MediaGalleryComponent implements OnInit, OnDestroy, AfterViewInit {
       this.breadcrumbs = [];
       return;
     }
-    this.folderService.getBreadcrumbs(this.currentFolderId).subscribe({
-      next: crumbs => {
-        this.breadcrumbs = crumbs;
-      },
-      error: err => {
-        console.error('Error loading breadcrumbs:', err);
-        if (!this.isSelectionMode && !this.isSelectorMode) {
-          this.snackBar.open('Folder not found', 'Close', {duration: 3000});
-          void this.router.navigate(['/gallery']);
-        }
-      },
-    });
+
+    const workspaceId = this.workspaceStateService.getActiveWorkspaceId();
+    this.folderService
+      .getBreadcrumbs(this.currentFolderId, workspaceId ?? undefined)
+      .subscribe({
+        next: crumbs => {
+          this.breadcrumbs = crumbs;
+        },
+        error: err => {
+          console.error('Error loading breadcrumbs:', err);
+          if (!this.isSelectionMode && !this.isSelectorMode) {
+            const message =
+              err?.error?.detail || 'Folder not found in this workspace.';
+            this.snackBar.open(message, 'Close', {duration: 3000});
+            void this.router.navigate(['/gallery']);
+          }
+        },
+      });
   }
 
   navigateToFolder(folder: Folder): void {

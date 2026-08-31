@@ -369,6 +369,20 @@ class GalleryService:
         if not is_admin:
             search_dto.status = JobStatusEnum.COMPLETED
 
+        # If searching within a specific folder, validate the folder exists and belongs to this workspace
+        if search_dto.folder_id is not None:
+            folder = await self.folder_repo.get_folder_by_id(
+                search_dto.folder_id
+            )
+            if not folder or (
+                search_dto.workspace_id is not None
+                and folder.workspace_id != search_dto.workspace_id
+            ):
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=f"Folder with ID {search_dto.folder_id} not found in this workspace.",
+                )
+
         # Run the database query directly (it is async)
         # We assume UnifiedGalleryRepository.query handles filtering
         unified_items_query = await self.unified_gallery_repo.query(

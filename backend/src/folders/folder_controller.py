@@ -115,10 +115,23 @@ async def get_folder_tree(
 )
 async def get_folder_breadcrumbs(
     folder_id: int,
+    workspace_id: int | None = Query(
+        None,
+        description="Optional active workspace ID to validate folder membership",
+    ),
+    current_user: UserModel = Depends(get_current_user),
     service: FolderService = Depends(),
+    workspace_auth: WorkspaceAuth = Depends(),
 ) -> list[FolderBreadcrumbDto]:
     """Get ancestor breadcrumbs from root to current folder."""
-    return await service.get_breadcrumbs(folder_id=folder_id)
+    if workspace_id is not None:
+        await workspace_auth.authorize(
+            workspace_id=workspace_id,
+            user=current_user,
+        )
+    return await service.get_breadcrumbs(
+        folder_id=folder_id, workspace_id=workspace_id
+    )
 
 
 @router.get(
@@ -127,10 +140,23 @@ async def get_folder_breadcrumbs(
 )
 async def get_folder(
     folder_id: int,
+    workspace_id: int | None = Query(
+        None,
+        description="Optional active workspace ID to validate folder membership",
+    ),
+    current_user: UserModel = Depends(get_current_user),
     service: FolderService = Depends(),
+    workspace_auth: WorkspaceAuth = Depends(),
 ) -> FolderResponseDto:
     """Get single folder details by ID."""
-    return await service.get_folder_by_id(folder_id=folder_id)
+    if workspace_id is not None:
+        await workspace_auth.authorize(
+            workspace_id=workspace_id,
+            user=current_user,
+        )
+    return await service.get_folder_by_id(
+        folder_id=folder_id, workspace_id=workspace_id
+    )
 
 
 @router.patch(
@@ -142,8 +168,14 @@ async def update_folder(
     dto: FolderUpdateDto,
     current_user: UserModel = Depends(get_current_user),
     service: FolderService = Depends(),
+    workspace_auth: WorkspaceAuth = Depends(),
 ) -> FolderResponseDto:
     """Update folder properties or move folder to new parent."""
+    folder = await service.get_folder_by_id(folder_id=folder_id)
+    await workspace_auth.authorize(
+        workspace_id=folder.workspace_id,
+        user=current_user,
+    )
     return await service.update_folder(
         folder_id=folder_id, dto=dto, user=current_user
     )
@@ -156,8 +188,14 @@ async def delete_folder(
     folder_id: int,
     current_user: UserModel = Depends(get_current_user),
     service: FolderService = Depends(),
+    workspace_auth: WorkspaceAuth = Depends(),
 ) -> dict[str, bool]:
     """Soft delete a folder and all its subfolders."""
+    folder = await service.get_folder_by_id(folder_id=folder_id)
+    await workspace_auth.authorize(
+        workspace_id=folder.workspace_id,
+        user=current_user,
+    )
     return await service.delete_folder(folder_id=folder_id, user=current_user)
 
 

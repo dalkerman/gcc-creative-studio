@@ -51,7 +51,9 @@ describe('MediaGalleryComponent', () => {
   beforeEach(async () => {
     paramMapSubject = new BehaviorSubject<ParamMap>(convertToParamMap({}));
     activeWorkspaceIdSubject = new BehaviorSubject<number | null>(1);
-    routerSpy = jasmine.createSpyObj('Router', ['navigate', 'navigateByUrl']);
+    routerSpy = jasmine.createSpyObj('Router', ['navigate', 'navigateByUrl'], {
+      events: of(),
+    });
     const folderServiceSpy = jasmine.createSpyObj('FolderService', [
       'getFolders',
       'getBreadcrumbs',
@@ -540,15 +542,37 @@ describe('MediaGalleryComponent', () => {
     it('should redirect to /gallery and show snackbar when breadcrumbs fail to load in standalone mode', () => {
       const snackBar = TestBed.inject(MatSnackBar);
       folderService.getBreadcrumbs.and.returnValue(
-        throwError(() => new Error('Folder not found')),
+        throwError(() => ({
+          error: {detail: 'Folder with ID 999 not found in this workspace.'},
+        })),
       );
 
       component.currentFolderId = 999;
       component.loadBreadcrumbs();
 
-      expect(snackBar.open).toHaveBeenCalledWith('Folder not found', 'Close', {
-        duration: 3000,
-      });
+      expect(folderService.getBreadcrumbs).toHaveBeenCalledWith(999, 1);
+      expect(snackBar.open).toHaveBeenCalledWith(
+        'Folder with ID 999 not found in this workspace.',
+        'Close',
+        {duration: 3000},
+      );
+      expect(routerSpy.navigate).toHaveBeenCalledWith(['/gallery']);
+    });
+
+    it('should show fallback snackbar message when breadcrumb error has no detail', () => {
+      const snackBar = TestBed.inject(MatSnackBar);
+      folderService.getBreadcrumbs.and.returnValue(
+        throwError(() => new Error('Network error')),
+      );
+
+      component.currentFolderId = 999;
+      component.loadBreadcrumbs();
+
+      expect(snackBar.open).toHaveBeenCalledWith(
+        'Folder not found in this workspace.',
+        'Close',
+        {duration: 3000},
+      );
       expect(routerSpy.navigate).toHaveBeenCalledWith(['/gallery']);
     });
 

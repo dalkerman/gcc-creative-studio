@@ -109,13 +109,17 @@ class FolderService:
             workspace_id=workspace_id, parent_id=parent_id
         )
 
-    async def get_folder_by_id(self, folder_id: int) -> FolderResponseDto:
+    async def get_folder_by_id(
+        self, folder_id: int, workspace_id: int | None = None
+    ) -> FolderResponseDto:
         """Fetch folder by ID with item and subfolder counts."""
         folder = await self.folder_repo.get_folder_by_id(folder_id)
-        if not folder:
+        if not folder or (
+            workspace_id is not None and folder.workspace_id != workspace_id
+        ):
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Folder with ID {folder_id} not found.",
+                detail=f"Folder with ID {folder_id} not found in this workspace.",
             )
 
         # Get counts
@@ -141,14 +145,16 @@ class FolderService:
         )
 
     async def get_breadcrumbs(
-        self, folder_id: int
+        self, folder_id: int, workspace_id: int | None = None
     ) -> list[FolderBreadcrumbDto]:
         """Fetch ancestor breadcrumb trail from root to the given folder."""
         folder = await self.folder_repo.get_folder_by_id(folder_id)
-        if not folder:
+        if not folder or (
+            workspace_id is not None and folder.workspace_id != workspace_id
+        ):
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Folder with ID {folder_id} not found.",
+                detail=f"Folder with ID {folder_id} not found in this workspace.",
             )
         return await self.folder_repo.get_breadcrumbs(folder_id)
 
